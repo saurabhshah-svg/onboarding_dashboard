@@ -175,6 +175,7 @@ const EMBEDDED_DATA = {
   <div class="tab" onclick="switchTab('studio')">Studio</div>
   <div class="tab" onclick="switchTab('vini')">Vini</div>
   <div class="tab" onclick="switchTab('programs')">Programs</div>
+  <div class="tab" onclick="switchTab('analytics')">Analytics</div>
 </div>
 
 <!-- Filter bars -->
@@ -464,23 +465,30 @@ const EMBEDDED_DATA = {
   </div>
 </div>
 
-<!-- Programs Tab -->
+<!-- Programs Tab — Unblock OB → Live (Studio / Vini) -->
 <div id="tab-programs" class="main">
+  <div style="padding:8px 24px 24px 24px">
+    <div id="programs-content"></div>
+  </div>
+</div>
+
+<!-- Analytics Tab -->
+<div id="tab-analytics" class="main">
   <div style="padding:0 0 20px 0">
     <!-- Sub-tab bar -->
     <div style="display:flex;gap:0;border-bottom:2px solid var(--border);background:#fff;padding:0 24px;margin-bottom:20px">
-      <div id="ptab-c2ob" class="ptab ptab-active" onclick="switchPTab('c2ob')" style="padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;color:var(--blue);border-bottom:3px solid var(--blue);margin-bottom:-2px;transition:all .15s">Contract-to-OB</div>
-      <div id="ptab-ob2live" class="ptab" onclick="switchPTab('ob2live')" style="padding:12px 20px;font-size:14px;font-weight:500;cursor:pointer;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .15s">OB-to-Live</div>
+      <div id="atab-inob" class="atab" onclick="switchATab('inob')" style="padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;color:var(--blue);border-bottom:3px solid var(--blue);margin-bottom:-2px;transition:all .15s">ARR In-OB</div>
+      <div id="atab-wentlive" class="atab" onclick="switchATab('wentlive')" style="padding:12px 20px;font-size:14px;font-weight:500;cursor:pointer;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .15s">ARR Went Live</div>
     </div>
 
-    <!-- Contract-to-OB panel (Pendency View) -->
-    <div id="ppanel-c2ob" style="padding:0 24px">
-      <div id="c2ob-content"></div>
+    <!-- ARR In-OB panel (Pendency View) -->
+    <div id="apanel-inob" style="padding:0 24px">
+      <div id="inob-content"></div>
     </div>
 
-    <!-- OB-to-Live panel (Went-Live View) -->
-    <div id="ppanel-ob2live" style="padding:0 24px;display:none">
-      <div id="ob2live-content"></div>
+    <!-- ARR Went Live panel -->
+    <div id="apanel-wentlive" style="padding:0 24px;display:none">
+      <div id="wentlive-content"></div>
     </div>
   </div>
 </div>
@@ -758,6 +766,9 @@ function parseVini(rows) {
     projectionDate: parseDate(getCol(r,cm,'projected live date')),
     goLiveDate:  parseDate(getCol(r,cm,'go-live date')),
     blockedReason: getCol(r,cm,'blocked owner'),
+    blockedRemarks: getCol(r,cm,'blocked remarks'),
+    unblockOwner: getCol(r,cm,'who is currently working to unblock? (add person name)'),
+    unblockEta:   getCol(r,cm,'unblocking eta'),
     liveTat:     parseFloat(getCol(r,cm,'live tat')) || null,
     inObFrom:    normSource(getCol(r,cm,'in-ob from')),
     liveFrom:    normSource(getCol(r,cm,'live from')),
@@ -787,6 +798,9 @@ function parseAmer(rows) {
     projectionDate: parseDate(getCol(r,cm,'projected live date')),
     goLiveDate:  parseDate(getCol(r,cm,'go-live date')),
     blockedReason: getCol(r,cm,'blocked owner'),
+    blockedRemarks: getCol(r,cm,'blocked remarks'),
+    unblockOwner: getCol(r,cm,'who is currently working to unblock? (add person name)'),
+    unblockEta:   getCol(r,cm,'unblocking eta'),
     liveTat:     parseFloat(getCol(r,cm,'live tat')) || null,
     inObFrom:    normSource(getCol(r,cm,'in-ob from')),
     liveFrom:    normSource(getCol(r,cm,'live from')),
@@ -820,6 +834,9 @@ function parseApacEmea(rows) {
       projectionDate: parseDate(getCol(r,cm,'projected live date')),
       goLiveDate:  parseDate(getCol(r,cm,'go-live date')),
       blockedReason: getCol(r,cm,'blocked bucketing','blocked owner'),
+      blockedRemarks: getCol(r,cm,'blocked remarks'),
+      unblockOwner: getCol(r,cm,'who is currently working to unblock? (add person name)'),
+      unblockEta:   getCol(r,cm,'unblocking eta'),
       liveTat:     parseFloat(getCol(r,cm,'live tat')) || null,
       inObFrom:    normSource(getCol(r,cm,'in-ob from')),
       liveFrom:    normSource(getCol(r,cm,'live from')),
@@ -871,7 +888,7 @@ function showErrorBanner(msg) {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab').forEach((el,i) => {
-    const tabs = ['overview','studio','vini','programs'];
+    const tabs = ['overview','studio','vini','programs','analytics'];
     el.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.main').forEach(el => el.classList.remove('active'));
@@ -992,29 +1009,24 @@ function renderAll() {
     renderVini(filtered);
   } else if (currentTab === 'programs') {
     renderPrograms(allRows);
+  } else if (currentTab === 'analytics') {
+    renderAnalytics(allRows);
   }
 }
 
-// ─── PROGRAMS ────────────────────────────────────────────────
-let progSort = { c2ob: { col: 6, dir: -1 }, ob2live: { col: 6, dir: -1 } };
-let currentPTab = 'c2ob';
+// ─── ANALYTICS (sub-tab switcher) ────────────────────────────
+let currentATab = 'inob';
 
-function switchPTab(pt) {
-  currentPTab = pt;
-  document.querySelectorAll('.ptab').forEach(el => {
-    const active = el.id === 'ptab-' + pt;
+function switchATab(at) {
+  currentATab = at;
+  document.querySelectorAll('.atab').forEach(el => {
+    const active = el.id === 'atab-' + at;
     el.style.color = active ? 'var(--blue)' : 'var(--muted)';
     el.style.fontWeight = active ? '600' : '500';
     el.style.borderBottomColor = active ? 'var(--blue)' : 'transparent';
   });
-  document.getElementById('ppanel-c2ob').style.display = pt === 'c2ob' ? 'block' : 'none';
-  document.getElementById('ppanel-ob2live').style.display = pt === 'ob2live' ? 'block' : 'none';
-}
-
-function sortProgTable(pt, col) {
-  if (progSort[pt].col === col) progSort[pt].dir *= -1;
-  else { progSort[pt].col = col; progSort[pt].dir = -1; }
-  renderPrograms(allRows);
+  document.getElementById('apanel-inob').style.display = at === 'inob' ? 'block' : 'none';
+  document.getElementById('apanel-wentlive').style.display = at === 'wentlive' ? 'block' : 'none';
 }
 
 // ── helpers for Programs tab ─────────────────────────────────
@@ -1047,8 +1059,8 @@ function d$(v)  { return v ? fmt$(v) : '$0'; }
 function pendencySection(label, color, sectionRows) {
   const pocs = [...new Set(sectionRows.map(r=>r.obPoc||'Unassigned'))].sort();
   const tot  = pocStats(sectionRows);
-  const cols = ['ARR in OB','#Ent in OB','#Rooftops in OB','# Franchise Rooftops','# GD Franchise','# SD Franchise','# ID Rooftops','#Blocked Rooftops','# Blocked Franchise Rt','# Blocked ID Rt','$Blocked ARR','Blocked Fr ARR','Blocked ID ARR'];
-  const statRow = s => [d$(s.arr), n0(s.ents), n0(s.rooftops), n0(s.franchise), n0(s.gdFranchise), n0(s.sdFranchise), n0(s.idRooftops), n0(s.blockedRt), n0(s.blockedFrRt), n0(s.blockedIdRt), d$(s.blockedArr), d$(s.blockedFrArr), d$(s.blockedIdArr)];
+  const cols = ['ARR in OB','$Blocked ARR','Blocked Fr ARR','Blocked ID ARR'];
+  const statRow = s => [d$(s.arr), d$(s.blockedArr), d$(s.blockedFrArr), d$(s.blockedIdArr)];
   const totVals = statRow(tot);
 
   return `
@@ -1071,7 +1083,7 @@ function pendencySection(label, color, sectionRows) {
           const vs = statRow(s);
           return `<tr>
             <td style="padding:8px 14px;font-weight:600;border-bottom:1px solid var(--border)">${poc}</td>
-            ${vs.map((v,i)=>`<td style="padding:8px 10px;text-align:right;border-bottom:1px solid var(--border);color:${i===0||i>=10?'var(--text)':'var(--muted)'}">${v}</td>`).join('')}
+            ${vs.map((v,i)=>`<td style="padding:8px 10px;text-align:right;border-bottom:1px solid var(--border);color:${i===0?'var(--text)':'var(--muted)'}">${v}</td>`).join('')}
           </tr>`;
         }).join('')}
       </tbody>
@@ -1123,30 +1135,137 @@ function wentLiveSection(label, color, sectionRows, months) {
   </div>`;
 }
 
-function renderPrograms(rows) {
-  // ── PENDENCY (Contract-to-OB) ────────────────────────────────
+// ─── ANALYTICS (breakdown tables, moved out of Programs) ─────
+function renderAnalytics(rows) {
+  // ARR In-OB (pendency)
   const inFunnel = rows.filter(r => isInFunnel(r));
   const studioAmer = inFunnel.filter(r => r.source === 'amer');
   const studioApac = inFunnel.filter(r => r.source === 'apac');
-  const viniRows   = inFunnel.filter(r => r.source === 'vini');
+  const viniIn     = inFunnel.filter(r => r.source === 'vini');
 
-  document.getElementById('c2ob-content').innerHTML =
+  document.getElementById('inob-content').innerHTML =
     pendencySection('Studio (AMER)', '#1e40af', studioAmer) +
-    pendencySection('Vini', '#065f46', viniRows) +
+    pendencySection('Vini', '#065f46', viniIn) +
     pendencySection('Studio APAC/EMEA', '#7c2d12', studioApac);
 
-  // ── WENT LIVE (OB-to-Live) ────────────────────────────────────
+  // ARR Went Live (by month)
   const liveAll    = rows.filter(r => isLive(r) && r.liveMonth);
   const liveAmer   = liveAll.filter(r => r.source === 'amer');
   const liveVini   = liveAll.filter(r => r.source === 'vini');
-  // collect + sort all months present across all live rows
-  const allMonths = [...new Set(liveAll.map(r=>r.liveMonth))].sort();
+  const allMonths  = [...new Set(liveAll.map(r=>r.liveMonth))].sort();
 
-  document.getElementById('ob2live-content').innerHTML = allMonths.length
+  document.getElementById('wentlive-content').innerHTML = allMonths.length
     ? wentLiveSection('Overall Live', '#1e3a5f', liveAll, allMonths) +
       wentLiveSection('Studio AMER Live', '#1e40af', liveAmer, allMonths) +
       wentLiveSection('Vini Live', '#065f46', liveVini, allMonths)
     : '<div style="padding:40px;text-align:center;color:var(--muted)">No live data available</div>';
+}
+
+// ─── PROGRAMS — Unblock OB → Live (Studio / Vini) ────────────
+// Story per segment:
+//   Bucket 1 "Went Live + Confirmed this month" — no blockers, OB just needs to push.
+//   Bucket 2 "Upside — needs unblock program" — each Upside line item needs an unblock
+//     owner + ETA (the 2 new sheet columns). Rows missing either are FLAGGED (no program).
+function isUpside(r)    { return r.currentMonthConf === 'Upside'; }
+function isConfirmed(r) { return r.currentMonthConf === 'Confirmed'; }
+function hasVal(v)      { return !!(v && String(v).trim()); }
+function hasProgram(r)  { return hasVal(r.unblockOwner) && hasVal(r.unblockEta); }
+// Hide spreadsheet error values (#REF!, #N/A, …) so broken cells don't show as text.
+function cleanTxt(v)    { const s=(v||'').trim(); return /^#(ref|n\/a|value|div\/0|name|null|num)[!?]*$/i.test(s) ? '' : s; }
+
+function renderPrograms(rows) {
+  const segs = [
+    { label:'Studio', color:'#1e40af', rows: rows.filter(r => r.source !== 'vini') },
+    { label:'Vini',   color:'#065f46', rows: rows.filter(r => r.source === 'vini') }
+  ];
+  document.getElementById('programs-content').innerHTML =
+    programSummaryBar(rows) + segs.map(s => programSegment(s.label, s.color, s.rows)).join('');
+}
+
+function programSummaryBar(rows) {
+  const upside    = rows.filter(r => isUpside(r) && !isLive(r));
+  const flagged   = upside.filter(r => !hasProgram(r));
+  const wentLive  = rows.filter(liveThisMonth);
+  const confirmed = rows.filter(r => isConfirmed(r) && !isLive(r));
+  const pushARR   = [...wentLive, ...confirmed].reduce((s,r)=>s+r.arr,0);
+  const upsideARR = upside.reduce((s,r)=>s+r.arr,0);
+  const flagARR   = flagged.reduce((s,r)=>s+r.arr,0);
+  const card = (label, val, sub, color) => `
+    <div style="flex:1;min-width:200px;background:#fff;border:1px solid var(--border);border-left:4px solid ${color};border-radius:8px;padding:14px 16px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.03em">${label}</div>
+      <div style="font-size:22px;font-weight:800;margin-top:4px">${val}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">${sub}</div>
+    </div>`;
+  return `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px">
+    ${card('Push to Close (Live + Confirmed)', fmt$(pushARR), (wentLive.length+confirmed.length) + ' accounts this month', '#16a34a')}
+    ${card('Upside ARR to Unblock', fmt$(upsideARR), upside.length + ' accounts need a program', '#d97706')}
+    ${card('⚠ Flagged — No Program', fmt$(flagARR), flagged.length + ' of ' + upside.length + ' missing owner / ETA', '#dc2626')}
+  </div>`;
+}
+
+function programSegment(label, color, segRows) {
+  const wentLive  = segRows.filter(liveThisMonth);
+  const confirmed = segRows.filter(r => isConfirmed(r) && !isLive(r));
+  const bucketA   = [...wentLive, ...confirmed].sort((a,b)=>b.arr-a.arr);
+  const upside    = segRows.filter(r => isUpside(r) && !isLive(r)).sort((a,b)=>b.arr-a.arr);
+  const flaggedN  = upside.filter(r => !hasProgram(r)).length;
+  const aARR = bucketA.reduce((s,r)=>s+r.arr,0);
+  const uARR = upside.reduce((s,r)=>s+r.arr,0);
+
+  const th = (h,right) => `<th style="padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);border-bottom:2px solid var(--border);text-align:${right?'right':'left'}">${h}</th>`;
+
+  // Bucket 1: Went Live + Confirmed this month
+  const bucketAtable = bucketA.length ? `
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead><tr style="background:#F8FAFC">${th('Account')}${th('ARR',true)}${th('OB POC')}${th('Status')}${th('Go-Live / Projected')}</tr></thead>
+      <tbody>${bucketA.map(r => {
+        const live = isLive(r);
+        return `<tr>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border);font-weight:600">${r.entityName||r.rooftopName||'—'}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border);text-align:right">${fmt$(r.arr)}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted)">${r.obPoc||'—'}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border)"><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${live?'#dcfce7':'#dbeafe'};color:${live?'#16a34a':'#2563eb'}">${live?'Live':'Confirmed'}</span></td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted)">${fmtDate(live?r.goLiveDate:r.projectionDate)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>` : '<div style="padding:16px;color:var(--muted);font-size:13px">No live / confirmed accounts this month.</div>';
+
+  // Bucket 2: Upside — needs unblock program
+  const upsideTable = upside.length ? `
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead><tr style="background:#F8FAFC">${th('Account')}${th('ARR',true)}${th('OB POC')}${th('Blocked Remarks')}${th('Unblock Owner')}${th('ETA')}${th('Program')}</tr></thead>
+      <tbody>${upside.map(r => {
+        const mapped = hasProgram(r);
+        const noOwner = !hasVal(r.unblockOwner), noEta = !hasVal(r.unblockEta);
+        const flagTxt = noOwner && noEta ? 'No program mapped' : noOwner ? 'No owner' : 'No ETA';
+        const dash = '<span style="color:#dc2626">—</span>';
+        return `<tr style="${mapped?'':'background:#fef2f2'}">
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border);font-weight:600">${r.entityName||r.rooftopName||'—'}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border);text-align:right">${fmt$(r.arr)}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted)">${r.obPoc||'—'}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted);max-width:260px;white-space:normal">${cleanTxt(r.blockedRemarks)||cleanTxt(r.blockedReason)||'—'}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border)">${hasVal(r.unblockOwner)?r.unblockOwner:dash}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border)">${hasVal(r.unblockEta)?r.unblockEta:dash}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid var(--border)">${mapped
+            ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dcfce7;color:#16a34a">Mapped</span>'
+            : '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#fee2e2;color:#dc2626">⚠ '+flagTxt+'</span>'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>` : '<div style="padding:16px;color:var(--muted);font-size:13px">No Upside accounts to unblock. 🎉</div>';
+
+  return `
+  <div class="section" style="margin-bottom:28px;overflow:hidden">
+    <div style="background:${color};color:#fff;padding:12px 18px;font-size:15px;font-weight:800;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <span>${label}</span>
+      <span style="font-size:12px;font-weight:600;opacity:.95">Upside to unblock: ${fmt$(uARR)} · ${upside.length} accts${flaggedN?` · <span style="color:#fecaca">⚠ ${flaggedN} unmapped</span>`:''}</span>
+    </div>
+    <div style="padding:16px 18px">
+      <div style="font-size:13px;font-weight:700;color:var(--text);margin:4px 0 8px">✅ Went Live + Confirmed this month — push to close <span style="font-weight:500;color:var(--muted)">(${bucketA.length} accts · ${fmt$(aARR)})</span></div>
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">${bucketAtable}</div>
+      <div style="font-size:13px;font-weight:700;color:var(--text);margin:20px 0 8px">⚠ Upside — needs unblock program <span style="font-weight:500;color:var(--muted)">(${upside.length} accts · ${fmt$(uARR)} · ${flaggedN} unmapped)</span></div>
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">${upsideTable}</div>
+    </div>
+  </div>`;
 }
 
 // ─── OVERVIEW ────────────────────────────────────────────────
