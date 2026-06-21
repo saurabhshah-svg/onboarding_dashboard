@@ -561,7 +561,10 @@ function respond(obj) {
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbykaELvGyPvTzPKYwYrYuElWK4pepevjmSS0LOGgQeGLjLaYdNM7IIuZC1WurW3ctyiLQ/exec'; // ← Live Apps Script web app
 
 const FALLBACK_SYNC = EMBEDDED_DATA.syncedAt;
-const BASE_LARR = 7732095;
+// Base ARR at end of last month (May'26), split by product so the LARR card is
+// correct when the Product filter is Studio or Vini.
+const BASE_LARR_BY_PRODUCT = { vini: 1098016, studio: 6634079 };
+const BASE_LARR = BASE_LARR_BY_PRODUCT.vini + BASE_LARR_BY_PRODUCT.studio;  // 7,732,095 (All products)
 const PIPELINE_TARGETS = { 'PWS': 500000, 'In-OB': 800000, 'New Sales': 700000 };
 // Fixed funnel ARR at start of month (Day 1 snapshot — does not change dynamically)
 const INOB_START_ARR = 1418750;   // In-OB funnel ARR at month start
@@ -571,7 +574,10 @@ const PWS_START_ARR  = 2605080;   // PWS funnel ARR at month start
 //   Col D = Churn/Contraction ARR, Col E = Churn/Contraction Month (YYYY-MM).
 // computeRevenueLoss() sums Col D for rows where Col E === the current month.
 // The value below is only a fallback used if the live churn fetch fails.
-let REVENUE_LOSS     = 208844;    // fallback: Jun'26 churn ($208,843.92, live-overridden)
+// Churn/contraction for current month, split by product (Col F of the churn sheet).
+// computeRevenueLoss() overrides these live; values below are fallbacks if the fetch fails.
+let REVENUE_LOSS_BY_PRODUCT = { vini: 64188, studio: 144656 };  // Jun'26 fallback
+let REVENUE_LOSS = REVENUE_LOSS_BY_PRODUCT.vini + REVENUE_LOSS_BY_PRODUCT.studio;  // total ($208,844)
 
 // ─── State ───────────────────────────────────────────────────
 let viniRows = [], studioRows = [], allRows = [];
@@ -597,14 +603,17 @@ const CUR_YM = CY + '-' + String(CM + 1).padStart(2, '0');  // e.g. "2026-06" �
 // Col D (idx 3) = ARR, Col E (idx 4) = Churn/Contraction Month (YYYY-MM). Note/header rows are
 // skipped naturally since their Col E never equals CUR_YM.
 function computeRevenueLoss(churnRows) {
-  if (!Array.isArray(churnRows)) return REVENUE_LOSS;
-  let sum = 0;
+  if (!Array.isArray(churnRows)) return null;
+  const out = { vini: 0, studio: 0, total: 0 };
   churnRows.forEach(r => {
     if ((r[4] || '').trim() === CUR_YM) {
-      sum += parseFloat(String(r[3] || '').replace(/[^0-9.\-]/g, '')) || 0;
+      const arr = parseFloat(String(r[3] || '').replace(/[^0-9.\-]/g, '')) || 0;
+      if ((r[5] || '').trim().toLowerCase() === 'vini') out.vini += arr;
+      else out.studio += arr;   // anything not "Vini" (Col F) counts as Studio
+      out.total += arr;
     }
   });
-  return sum;
+  return out;
 }
 
 // ─── Business logic ──────────────────────────────────────────
@@ -944,7 +953,10 @@ async function loadAllData() {
         fetchLiveSheet('churn').catch(err => { console.warn('Churn fetch failed, using fallback REVENUE_LOSS:', err); return null; })
       ]);
       viniCSV = v.csv; amerCSV = a.csv; apacCSV = p.csv;
-      if (c && c.csv) REVENUE_LOSS = computeRevenueLoss(c.csv);
+      if (c && c.csv) {
+        const rl = computeRevenueLoss(c.csv);
+        if (rl) { REVENUE_LOSS_BY_PRODUCT = { vini: rl.vini, studio: rl.studio }; REVENUE_LOSS = rl.total; }
+      }
       syncedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
       showSyncBanner('🟢 Live data · Last synced: ' + syncedAt, 'live');
     } else {
@@ -1155,8 +1167,17 @@ function renderOverview(filtered) {
   const liveARR    = liveRows.reduce((s,r)=>s+r.arr,0);
   const liveN      = liveRows.length;
   const droppedARR = droppedRows.reduce((s,r)=>s+r.arr,0);
+  // Base ARR + churn scoped to the current Product filter so the LARR card is
+  // correct at product level (base/churn only split by product, not region/POC).
+  const prodFilter = filters.overview.product || 'All';
+  const baseLARR = prodFilter === 'Vini'   ? BASE_LARR_BY_PRODUCT.vini
+                 : prodFilter === 'Studio' ? BASE_LARR_BY_PRODUCT.studio
+                 : BASE_LARR;
+  const revLoss  = prodFilter === 'Vini'   ? REVENUE_LOSS_BY_PRODUCT.vini
+                 : prodFilter === 'Studio' ? REVENUE_LOSS_BY_PRODUCT.studio
+                 : REVENUE_LOSS;
   // Task 2: subtract Revenue Loss (from CS Dashboard) from LARR
-  const totalLARR  = BASE_LARR + liveARR - droppedARR - REVENUE_LOSS;
+  const totalLARR  = baseLARR + liveARR - droppedARR - revLoss;
   const expARR     = expRows.reduce((s,r)=>s+r.arr,0);
   const expN       = expRows.length;
   const meLARR     = totalLARR + expARR;
@@ -1223,7 +1244,7 @@ function renderOverview(filtered) {
 
   // ── Set card values ───────────────────────────────────────────────────────────
   document.getElementById('kpi-larr').textContent     = fmt$(totalLARR);
-  document.getElementById('kpi-larr-sub').textContent = `Base: ${fmt$(BASE_LARR)} · +${fmt$(liveARR)} live${REVENUE_LOSS ? ' · -' + fmt$(REVENUE_LOSS) + ' churn' : ''}`;
+  document.getElementById('kpi-larr-sub').textContent = `Base: ${fmt$(baseLARR)} · +${fmt$(liveARR)} live${revLoss ? ' · -' + fmt$(revLoss) + ' churn' : ''}`;
 
   // Blocked ARR card
   document.getElementById('kpi-blocked-arr').textContent = fmt$(blockedARR);
