@@ -566,10 +566,12 @@ const PIPELINE_TARGETS = { 'PWS': 500000, 'In-OB': 800000, 'New Sales': 700000 }
 // Fixed funnel ARR at start of month (Day 1 snapshot — does not change dynamically)
 const INOB_START_ARR = 1418750;   // In-OB funnel ARR at month start
 const PWS_START_ARR  = 2605080;   // PWS funnel ARR at month start
-// Revenue Loss for current month — fetched from CS Dashboard or updated manually
-// To link CS dashboard: set CS_SHEET_URL to the published CSV of the churn/loss sheet
-const CS_SHEET_URL   = '';        // ← paste CS dashboard Google Sheet published CSV URL
-const REVENUE_LOSS   = 0;         // ← fallback: paste Jun'26 revenue loss $ amount here
+// Revenue Loss (churn/contraction) for current month.
+// Pulled LIVE via the Apps Script proxy (?sheet=churn) from the CS dashboard:
+//   Col D = Churn/Contraction ARR, Col E = Churn/Contraction Month (YYYY-MM).
+// computeRevenueLoss() sums Col D for rows where Col E === the current month.
+// The value below is only a fallback used if the live churn fetch fails.
+let REVENUE_LOSS     = 208844;    // fallback: Jun'26 churn ($208,843.92, live-overridden)
 
 // ─── State ───────────────────────────────────────────────────
 let viniRows = [], studioRows = [], allRows = [];
@@ -589,6 +591,21 @@ const filters = {
 const TODAY = new Date();
 const CY = TODAY.getFullYear(), CM = TODAY.getMonth();
 const NY = CM===11?CY+1:CY, NM = (CM+1)%12;
+const CUR_YM = CY + '-' + String(CM + 1).padStart(2, '0');  // e.g. "2026-06" — matches churn sheet Col E
+
+// Sum current-month churn/contraction ARR from the CS churn sheet (array-of-arrays from parseCSV).
+// Col D (idx 3) = ARR, Col E (idx 4) = Churn/Contraction Month (YYYY-MM). Note/header rows are
+// skipped naturally since their Col E never equals CUR_YM.
+function computeRevenueLoss(churnRows) {
+  if (!Array.isArray(churnRows)) return REVENUE_LOSS;
+  let sum = 0;
+  churnRows.forEach(r => {
+    if ((r[4] || '').trim() === CUR_YM) {
+      sum += parseFloat(String(r[3] || '').replace(/[^0-9.\-]/g, '')) || 0;
+    }
+  });
+  return sum;
+}
 
 // ─── Business logic ──────────────────────────────────────────
 function isLive(r) { return /^live$/i.test((r.stage||'').trim()); }
@@ -920,12 +937,14 @@ async function loadAllData() {
 
     if (APPS_SCRIPT_URL && APPS_SCRIPT_URL.trim() !== '') {
       showLoadingBanner('⟳ Fetching live data from Google Sheets...');
-      const [v, a, p] = await Promise.all([
+      const [v, a, p, c] = await Promise.all([
         fetchLiveSheet('vini'),
         fetchLiveSheet('amer'),
-        fetchLiveSheet('apac')
+        fetchLiveSheet('apac'),
+        fetchLiveSheet('churn').catch(err => { console.warn('Churn fetch failed, using fallback REVENUE_LOSS:', err); return null; })
       ]);
       viniCSV = v.csv; amerCSV = a.csv; apacCSV = p.csv;
+      if (c && c.csv) REVENUE_LOSS = computeRevenueLoss(c.csv);
       syncedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
       showSyncBanner('🟢 Live data · Last synced: ' + syncedAt, 'live');
     } else {
