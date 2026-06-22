@@ -260,7 +260,6 @@ const EMBEDDED_DATA = {
     <div class="kpi-card card-amber">
       <div class="kpi-label">Blocked ARR (Upside)</div>
       <div class="kpi-value" id="kpi-blocked-arr">—</div>
-      <div class="kpi-sub" id="kpi-blocked-sub">—</div>
       <div class="kpi-tags" id="kpi-blocked-tags"></div>
     </div>
     <div class="kpi-card card-purple">
@@ -1377,10 +1376,8 @@ function renderOverview(filtered) {
   document.getElementById('kpi-larr').textContent     = fmt$(totalLARR);
   document.getElementById('kpi-larr-sub').textContent = `Base: ${fmt$(baseLARR)} · +${fmt$(liveARR)} live${revLoss ? ' · -' + fmt$(revLoss) + ' churn' : ''}`;
 
-  // Blocked ARR card
+  // Blocked ARR card — two labeled splits: by product, by projected live date
   document.getElementById('kpi-blocked-arr').textContent = fmt$(blockedARR);
-  document.getElementById('kpi-blocked-sub').textContent  = blockedRows.length + ' accounts flagged as Upside';
-  // Upside ARR bucketed by Projected Live Date
   let blkThis=0, blkNext=0, blkNone=0;
   blockedRows.forEach(r => {
     if (sameMonth(r.projectionDate, CM, CY))      blkThis += r.arr;
@@ -1388,8 +1385,9 @@ function renderOverview(filtered) {
     else if (!r.projectionDate)                   blkNone += r.arr;
     // projections beyond next month / in the past fall outside these 3 buckets
   });
-  const subHdr = t => `<span class="tag" style="width:100%;background:transparent;padding:5px 0 1px;font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${t}</span>`;
+  const subHdr = (t, first) => `<span class="tag" style="width:100%;background:transparent;padding:${first?'2px':'7px'} 0 1px;font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${t}</span>`;
   document.getElementById('kpi-blocked-tags').innerHTML =
+    subHdr('By Product', true) +
     `<span class="tag" style="color:var(--muted)">Studio: ${fmt$(blockedStudio)}</span>` +
     `<span class="tag" style="color:var(--muted)">Vini: ${fmt$(blockedVini)}</span>` +
     subHdr('By Projected Live Date') +
