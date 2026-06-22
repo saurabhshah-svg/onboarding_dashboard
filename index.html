@@ -71,7 +71,7 @@ a:hover { text-decoration:underline; }
 .kpi-card.card-amber { border-left-color:var(--amber); }
 .kpi-card.card-red { border-left-color:var(--red); }
 .kpi-card.card-purple { border-left-color:var(--purple); }
-.kpi-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin-bottom:6px; }
+.kpi-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin-bottom:6px; min-height:2.4em; display:flex; align-items:flex-end; gap:5px; line-height:1.2; }
 .kpi-info { position:relative; display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; margin-left:5px; border:1px solid var(--muted); border-radius:50%; font-size:9px; font-weight:700; font-style:italic; color:var(--muted); cursor:help; text-transform:none; letter-spacing:0; vertical-align:middle; }
 .kpi-tip { visibility:hidden; opacity:0; position:absolute; bottom:150%; left:50%; transform:translateX(-50%); width:235px; padding:9px 11px; background:#1e293b; color:#fff; border-radius:7px; font-size:11px; font-weight:400; font-style:normal; line-height:1.5; text-transform:none; letter-spacing:normal; text-align:left; white-space:normal; box-shadow:0 6px 18px rgba(0,0,0,.22); z-index:60; transition:opacity .15s; pointer-events:none; }
 .kpi-info:hover .kpi-tip, .kpi-info:focus .kpi-tip { visibility:visible; opacity:1; }
@@ -236,7 +236,7 @@ const EMBEDDED_DATA = {
     <div class="kpi-card card-blue">
       <div class="kpi-label">Total LARR</div>
       <div class="kpi-value" id="kpi-larr">—</div>
-      <div class="kpi-sub" id="kpi-larr-sub">—</div>
+      <div class="kpi-tags" id="kpi-larr-sub"></div>
       <div class="kpi-tags" id="kpi-larr-tags"></div>
     </div>
     <div class="kpi-card card-green">
@@ -1370,12 +1370,15 @@ function renderOverview(filtered) {
   document.getElementById('kpi-funnel-tags').innerHTML =
     Object.entries(funnelSrcARR)
       .sort((a,b) => b[1]-a[1])
-      .map(([k,v])=>`<span class="tag">${k}: ${funnelSrcEnts[k].size} ents (${fmt$(v)})</span>`)
+      .map(([k,v])=>`<span class="tag">${k}: ${fmt$(v)}</span>`)
       .join('');
 
   // ── Set card values ───────────────────────────────────────────────────────────
   document.getElementById('kpi-larr').textContent     = fmt$(totalLARR);
-  document.getElementById('kpi-larr-sub').textContent = `Base: ${fmt$(baseLARR)} · +${fmt$(liveARR)} live${revLoss ? ' · -' + fmt$(revLoss) + ' churn' : ''}`;
+  document.getElementById('kpi-larr-sub').innerHTML =
+    `<span class="tag">Base: ${fmt$(baseLARR)}</span>` +
+    `<span class="tag" style="color:var(--green)">+${fmt$(liveARR)} Live</span>` +
+    (revLoss ? `<span class="tag" style="color:var(--red)">−${fmt$(revLoss)} Churn</span>` : '');
 
   // Blocked ARR card — two labeled splits: by product, by projected live date
   document.getElementById('kpi-blocked-arr').textContent = fmt$(blockedARR);
