@@ -71,7 +71,7 @@ a:hover { text-decoration:underline; }
 .kpi-card.card-amber { border-left-color:var(--amber); }
 .kpi-card.card-red { border-left-color:var(--red); }
 .kpi-card.card-purple { border-left-color:var(--purple); }
-.kpi-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin-bottom:6px; }
+.kpi-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin-bottom:6px; }
 .kpi-info { position:relative; display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; margin-left:5px; border:1px solid var(--muted); border-radius:50%; font-size:9px; font-weight:700; font-style:italic; color:var(--muted); cursor:help; text-transform:none; letter-spacing:0; vertical-align:middle; }
 .kpi-tip { visibility:hidden; opacity:0; position:absolute; bottom:150%; left:50%; transform:translateX(-50%); width:235px; padding:9px 11px; background:#1e293b; color:#fff; border-radius:7px; font-size:11px; font-weight:400; font-style:normal; line-height:1.5; text-transform:none; letter-spacing:normal; text-align:left; white-space:normal; box-shadow:0 6px 18px rgba(0,0,0,.22); z-index:60; transition:opacity .15s; pointer-events:none; }
 .kpi-info:hover .kpi-tip, .kpi-info:focus .kpi-tip { visibility:visible; opacity:1; }
@@ -1327,7 +1327,7 @@ function renderOverview(filtered) {
   document.getElementById('kpi-live-tags').innerHTML =
     Object.entries(liveSrcARR)
       .sort((a,b) => b[1]-a[1])
-      .map(([k,v])=>`<span class="tag">${k}: ${liveSrcEnts[k].size} ents (${fmt$(v)})</span>`)
+      .map(([k,v])=>`<span class="tag">${k}: ${fmt$(v)}</span>`)
       .join('');
 
   // ── Expected Go-Live: breakdown by confirmation status (Confirmed vs Upside) ──
@@ -1347,11 +1347,17 @@ function renderOverview(filtered) {
       .map(k => `<span class="tag" style="color:${confColors[k]}">${k}: ${expByConf[k].ents.size} ents (${fmt$(expByConf[k].arr)})</span>`)
       .join('');
 
-  // ── LARR breakdown by region ─────────────────────────────────────────────────
-  const liveByRegion = {};
-  liveRows.forEach(r => { liveByRegion[r.region]=(liveByRegion[r.region]||0)+r.arr; });
+  // ── Total LARR breakdown by product (Studio / Vini) ──────────────────────────
+  const larrByProduct = p => {
+    const isP = r => p === 'vini' ? r.source === 'vini' : r.source !== 'vini';
+    const lv = liveRows.filter(isP).reduce((s,r)=>s+r.arr,0);
+    const dr = droppedRows.filter(isP).reduce((s,r)=>s+r.arr,0);
+    return BASE_LARR_BY_PRODUCT[p] + lv - dr - REVENUE_LOSS_BY_PRODUCT[p];
+  };
   document.getElementById('kpi-larr-tags').innerHTML =
-    Object.entries(liveByRegion).map(([k,v])=>`<span class="tag">${k}: ${fmt$(v)}</span>`).join('');
+    prodFilter === 'All'
+      ? `<span class="tag">Studio: ${fmt$(larrByProduct('studio'))}</span><span class="tag">Vini: ${fmt$(larrByProduct('vini'))}</span>`
+      : `<span class="tag">${prodFilter}: ${fmt$(totalLARR)}</span>`;
 
   // ── ARR in Funnel: breakdown by 'In-OB from' ─────────────────────────────────
   const funnelSrcARR = {}, funnelSrcEnts = {};
@@ -1395,9 +1401,9 @@ function renderOverview(filtered) {
 
   // Avg OB Time
   document.getElementById('kpi-tat').textContent     = avgTat ? avgTat.toFixed(1) : '—';
-  document.getElementById('kpi-tat-sub').textContent =
-    (studioTats.length ? 'Studio: '+avg(studioTats).toFixed(1)+'d' : '') +
-    (viniTats.length   ? ' · Vini: '+avg(viniTats).toFixed(1)+'d'  : '');
+  document.getElementById('kpi-tat-sub').innerHTML =
+    (studioTats.length ? `<span class="tag" style="font-size:12px;font-weight:700;color:var(--blue);margin-right:5px">Studio: ${avg(studioTats).toFixed(1)}d</span>` : '') +
+    (viniTats.length   ? `<span class="tag" style="font-size:12px;font-weight:700;color:var(--green)">Vini: ${avg(viniTats).toFixed(1)}d</span>` : '');
 
   // ARR in Funnel — ARR big, enterprise count small
   document.getElementById('kpi-funnel-arr').textContent = fmt$(funnelARR);
