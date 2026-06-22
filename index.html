@@ -72,6 +72,9 @@ a:hover { text-decoration:underline; }
 .kpi-card.card-red { border-left-color:var(--red); }
 .kpi-card.card-purple { border-left-color:var(--purple); }
 .kpi-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin-bottom:6px; }
+.kpi-info { position:relative; display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; margin-left:5px; border:1px solid var(--muted); border-radius:50%; font-size:9px; font-weight:700; font-style:italic; color:var(--muted); cursor:help; text-transform:none; letter-spacing:0; vertical-align:middle; }
+.kpi-tip { visibility:hidden; opacity:0; position:absolute; bottom:150%; left:50%; transform:translateX(-50%); width:235px; padding:9px 11px; background:#1e293b; color:#fff; border-radius:7px; font-size:11px; font-weight:400; font-style:normal; line-height:1.5; text-transform:none; letter-spacing:normal; text-align:left; white-space:normal; box-shadow:0 6px 18px rgba(0,0,0,.22); z-index:60; transition:opacity .15s; pointer-events:none; }
+.kpi-info:hover .kpi-tip, .kpi-info:focus .kpi-tip { visibility:visible; opacity:1; }
 .kpi-value { font-size:22px; font-weight:700; color:var(--text); line-height:1.1; }
 .kpi-sub { font-size:11px; color:var(--muted); margin-top:4px; }
 .kpi-tags { font-size:11px; color:var(--muted); margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
@@ -243,7 +246,7 @@ const EMBEDDED_DATA = {
       <div class="kpi-tags" id="kpi-live-tags"></div>
     </div>
     <div class="kpi-card card-amber">
-      <div class="kpi-label">Expected Go-Live</div>
+      <div class="kpi-label">Expected Go-Live<span class="kpi-info" tabindex="0">i<span class="kpi-tip">Sum of ARR for accounts in <b>OB Initiated / In Implementation</b> stage (across all sheets) with a <b>Projected Live Date in the current month</b>. May include both Confirmed and Upside accounts.</span></span></div>
       <div class="kpi-value" id="kpi-exp-n">—</div>
       <div class="kpi-sub" id="kpi-exp-arr">—</div>
       <div class="kpi-tags" id="kpi-exp-tags"></div>
@@ -336,7 +339,7 @@ const EMBEDDED_DATA = {
       <div class="kpi-sub" id="st-kpi-live-arr">—</div>
     </div>
     <div class="kpi-card card-amber">
-      <div class="kpi-label">Expected Go-Live</div>
+      <div class="kpi-label">Expected Go-Live<span class="kpi-info" tabindex="0">i<span class="kpi-tip">Sum of ARR for accounts in <b>OB Initiated / In Implementation</b> stage (across all sheets) with a <b>Projected Live Date in the current month</b>. May include both Confirmed and Upside accounts.</span></span></div>
       <div class="kpi-value" id="st-kpi-exp-n">—</div>
       <div class="kpi-sub" id="st-kpi-exp-arr">—</div>
     </div>
@@ -405,7 +408,7 @@ const EMBEDDED_DATA = {
       <div class="kpi-sub" id="vi-kpi-live-arr">—</div>
     </div>
     <div class="kpi-card card-amber">
-      <div class="kpi-label">Expected Go-Live</div>
+      <div class="kpi-label">Expected Go-Live<span class="kpi-info" tabindex="0">i<span class="kpi-tip">Sum of ARR for accounts in <b>OB Initiated / In Implementation</b> stage (across all sheets) with a <b>Projected Live Date in the current month</b>. May include both Confirmed and Upside accounts.</span></span></div>
       <div class="kpi-value" id="vi-kpi-exp-n">—</div>
       <div class="kpi-sub" id="vi-kpi-exp-arr">—</div>
     </div>
