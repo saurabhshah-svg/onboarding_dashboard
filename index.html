@@ -1380,9 +1380,22 @@ function renderOverview(filtered) {
   // Blocked ARR card
   document.getElementById('kpi-blocked-arr').textContent = fmt$(blockedARR);
   document.getElementById('kpi-blocked-sub').textContent  = blockedRows.length + ' accounts flagged as Upside';
+  // Upside ARR bucketed by Projected Live Date
+  let blkThis=0, blkNext=0, blkNone=0;
+  blockedRows.forEach(r => {
+    if (sameMonth(r.projectionDate, CM, CY))      blkThis += r.arr;
+    else if (sameMonth(r.projectionDate, NM, NY)) blkNext += r.arr;
+    else if (!r.projectionDate)                   blkNone += r.arr;
+    // projections beyond next month / in the past fall outside these 3 buckets
+  });
+  const subHdr = t => `<span class="tag" style="width:100%;background:transparent;padding:5px 0 1px;font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${t}</span>`;
   document.getElementById('kpi-blocked-tags').innerHTML =
     `<span class="tag" style="color:var(--muted)">Studio: ${fmt$(blockedStudio)}</span>` +
-    `<span class="tag" style="color:var(--muted)">Vini: ${fmt$(blockedVini)}</span>`;
+    `<span class="tag" style="color:var(--muted)">Vini: ${fmt$(blockedVini)}</span>` +
+    subHdr('By Projected Live Date') +
+    `<span class="tag" style="color:var(--amber)">This month: ${fmt$(blkThis)}</span>` +
+    `<span class="tag" style="color:var(--blue)">Next month: ${fmt$(blkNext)}</span>` +
+    `<span class="tag" style="color:var(--red)">No date: ${fmt$(blkNone)}</span>`;
 
   // Live This Month — ARR big, enterprise count small
   document.getElementById('kpi-live-n').textContent   = fmt$(liveARR);
