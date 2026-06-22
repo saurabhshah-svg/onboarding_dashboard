@@ -255,6 +255,7 @@ const EMBEDDED_DATA = {
       <div class="kpi-label">Expected Month-End LARR</div>
       <div class="kpi-value" id="kpi-me-larr">—</div>
       <div class="kpi-sub" id="kpi-me-larr-sub">—</div>
+      <div class="kpi-tags" id="kpi-me-larr-tags"></div>
     </div>
     <div class="kpi-card card-amber">
       <div class="kpi-label">Blocked ARR (Upside)</div>
@@ -1329,19 +1330,21 @@ function renderOverview(filtered) {
       .map(([k,v])=>`<span class="tag">${k}: ${liveSrcEnts[k].size} ents (${fmt$(v)})</span>`)
       .join('');
 
-  // ── Expected Go-Live: breakdown by 'In-OB from' (funnel entry source) ────────
-  const expSrcARR = {}, expSrcEnts = {};
+  // ── Expected Go-Live: breakdown by confirmation status (Confirmed vs Upside) ──
+  const expByConf = { Confirmed:{arr:0,ents:new Set()}, Upside:{arr:0,ents:new Set()}, Unconfirmed:{arr:0,ents:new Set()} };
   expRows.forEach(r => {
-    const k = r.inObFrom || 'Untagged';
-    expSrcARR[k]  = (expSrcARR[k]||0) + r.arr;
-    if (!expSrcEnts[k]) expSrcEnts[k] = new Set();
-    expSrcEnts[k].add(r.entityName || r.rooftopName || '?');
+    const k = r.currentMonthConf === 'Confirmed' ? 'Confirmed'
+            : r.currentMonthConf === 'Upside'    ? 'Upside' : 'Unconfirmed';
+    expByConf[k].arr += r.arr;
+    expByConf[k].ents.add(r.entityName || r.rooftopName || '?');
   });
+  const expConfirmedARR = expByConf.Confirmed.arr;   // used by Month-End LARR (confirmed-only)
   const expEntCount = uniqEnts(expRows);
+  const confColors = { Confirmed:'var(--green)', Upside:'var(--amber)', Unconfirmed:'var(--muted)' };
   document.getElementById('kpi-exp-tags').innerHTML =
-    Object.entries(expSrcARR)
-      .sort((a,b) => b[1]-a[1])
-      .map(([k,v])=>`<span class="tag">${k}: ${expSrcEnts[k].size} ents (${fmt$(v)})</span>`)
+    ['Confirmed','Upside','Unconfirmed']
+      .filter(k => expByConf[k].arr > 0)
+      .map(k => `<span class="tag" style="color:${confColors[k]}">${k}: ${expByConf[k].ents.size} ents (${fmt$(expByConf[k].arr)})</span>`)
       .join('');
 
   // ── LARR breakdown by region ─────────────────────────────────────────────────
@@ -1383,9 +1386,12 @@ function renderOverview(filtered) {
   document.getElementById('kpi-exp-n').textContent    = fmt$(expARR);
   document.getElementById('kpi-exp-arr').textContent  = expEntCount + ' enterprises expected';
 
-  // Month-end LARR
+  // Month-end LARR — headline assumes all projected go live; tag shows confirmed-only
+  const meLARRConfirmed = totalLARR + expConfirmedARR;
   document.getElementById('kpi-me-larr').textContent     = fmt$(meLARR);
   document.getElementById('kpi-me-larr-sub').textContent = 'If all projected go live';
+  document.getElementById('kpi-me-larr-tags').innerHTML =
+    `<span class="tag" style="color:var(--green)">If only Confirmed: ${fmt$(meLARRConfirmed)}</span>`;
 
   // Avg OB Time
   document.getElementById('kpi-tat').textContent     = avgTat ? avgTat.toFixed(1) : '—';
