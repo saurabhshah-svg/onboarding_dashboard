@@ -1355,8 +1355,8 @@ function renderOverview(filtered) {
   };
   document.getElementById('kpi-larr-tags').innerHTML =
     prodFilter === 'All'
-      ? `<span class="tag">Studio: ${fmt$(larrByProduct('studio'))}</span><span class="tag">Vini: ${fmt$(larrByProduct('vini'))}</span>`
-      : `<span class="tag">${prodFilter}: ${fmt$(totalLARR)}</span>`;
+      ? `<span class="tag" style="color:var(--blue);font-weight:700">Studio: ${fmt$(larrByProduct('studio'))}</span><span class="tag" style="color:var(--green);font-weight:700">Vini: ${fmt$(larrByProduct('vini'))}</span>`
+      : `<span class="tag" style="color:${prodFilter==='Vini'?'var(--green)':'var(--blue)'};font-weight:700">${prodFilter}: ${fmt$(totalLARR)}</span>`;
 
   // ── ARR in Funnel: breakdown by 'In-OB from' ─────────────────────────────────
   const funnelSrcARR = {}, funnelSrcEnts = {};
@@ -1378,22 +1378,28 @@ function renderOverview(filtered) {
 
   // Blocked ARR card — two labeled splits: by product, by projected live date
   document.getElementById('kpi-blocked-arr').textContent = fmt$(blockedARR);
-  let blkThis=0, blkNext=0, blkNone=0;
+  let blkThis=0, blkNext=0, blkLater=0, blkPast=0, blkNone=0;
+  const curMonthStart = new Date(CY, CM, 1);
   blockedRows.forEach(r => {
-    if (sameMonth(r.projectionDate, CM, CY))      blkThis += r.arr;
-    else if (sameMonth(r.projectionDate, NM, NY)) blkNext += r.arr;
-    else if (!r.projectionDate)                   blkNone += r.arr;
-    // projections beyond next month / in the past fall outside these 3 buckets
+    const d = r.projectionDate;
+    if (!d)                        blkNone  += r.arr;
+    else if (sameMonth(d, CM, CY)) blkThis  += r.arr;
+    else if (sameMonth(d, NM, NY)) blkNext  += r.arr;
+    else if (d < curMonthStart)    blkPast  += r.arr;   // projection already passed = missed
+    else                           blkLater += r.arr;   // beyond next month
   });
   const subHdr = (t, first) => `<span class="tag" style="width:100%;background:transparent;padding:${first?'2px':'7px'} 0 1px;font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${t}</span>`;
+  const pill = (label, val, color, bold) => val > 0 ? `<span class="tag" style="color:${color}${bold?';font-weight:700':''}">${label}: ${fmt$(val)}</span>` : '';
   document.getElementById('kpi-blocked-tags').innerHTML =
     subHdr('By Product', true) +
-    `<span class="tag" style="color:var(--muted)">Studio: ${fmt$(blockedStudio)}</span>` +
-    `<span class="tag" style="color:var(--muted)">Vini: ${fmt$(blockedVini)}</span>` +
+    `<span class="tag" style="color:var(--blue);font-weight:700">Studio: ${fmt$(blockedStudio)}</span>` +
+    `<span class="tag" style="color:var(--green);font-weight:700">Vini: ${fmt$(blockedVini)}</span>` +
     subHdr('By Projected Live Date') +
-    `<span class="tag" style="color:var(--amber)">This month: ${fmt$(blkThis)}</span>` +
-    `<span class="tag" style="color:var(--blue)">Next month: ${fmt$(blkNext)}</span>` +
-    `<span class="tag" style="color:var(--red)">No date: ${fmt$(blkNone)}</span>`;
+    pill('This month',  blkThis,  'var(--green)') +
+    pill('Next month',  blkNext,  'var(--amber)') +
+    pill('Beyond next', blkLater, 'var(--red)') +
+    pill('Missed',      blkPast,  '#F97316') +
+    pill('No date',     blkNone,  'var(--text)', true);
 
   // Live This Month — ARR big, enterprise count small
   document.getElementById('kpi-live-n').textContent   = fmt$(liveARR);
