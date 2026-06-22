@@ -265,7 +265,7 @@ const EMBEDDED_DATA = {
     <div class="kpi-card card-purple">
       <div class="kpi-label">Avg OB Time (days)</div>
       <div class="kpi-value" id="kpi-tat">—</div>
-      <div class="kpi-sub" id="kpi-tat-sub">—</div>
+      <div class="kpi-tags" id="kpi-tat-sub"></div>
     </div>
     <div class="kpi-card card-blue">
       <div class="kpi-label">ARR in Funnel</div>
@@ -779,6 +779,7 @@ function parseVini(rows) {
     liveMonth:   getCol(r,cm,'live month'),
     region:      'AMER',
     currentMonthConf: getCol(r,cm,'current month confirmations'),
+    agent:       getCol(r,cm,'agent opted'),
     source:      'vini'
   }));
 }
@@ -1418,9 +1419,22 @@ function renderOverview(filtered) {
 
   // Avg OB Time
   document.getElementById('kpi-tat').textContent     = avgTat ? avgTat.toFixed(1) : '—';
+  // Vini TAT broken down by Agent (Agent Opted = Vini sheet Col G)
+  const viniAgent = {};
+  filtered.filter(r => r.source === 'vini' && r.liveTat > 0).forEach(r => {
+    const a = (r.agent || '').trim() || 'Unspecified';
+    (viniAgent[a] = viniAgent[a] || { sum:0, n:0 }).sum += r.liveTat;
+    viniAgent[a].n++;
+  });
+  const agentPills = Object.entries(viniAgent)
+    .map(([a,v]) => [a, v.sum/v.n])
+    .sort((x,y) => y[1]-x[1])
+    .map(([a,t]) => `<span class="tag" style="font-size:10.5px;color:var(--muted)">${a}: <b style="color:var(--green)">${t.toFixed(1)}d</b></span>`)
+    .join('');
   document.getElementById('kpi-tat-sub').innerHTML =
-    (studioTats.length ? `<span class="tag" style="font-size:12px;font-weight:700;color:var(--blue);margin-right:5px">Studio: ${avg(studioTats).toFixed(1)}d</span>` : '') +
-    (viniTats.length   ? `<span class="tag" style="font-size:12px;font-weight:700;color:var(--green)">Vini: ${avg(viniTats).toFixed(1)}d</span>` : '');
+    (studioTats.length ? `<span class="tag" style="font-size:12px;font-weight:700;color:var(--blue)">Studio: ${avg(studioTats).toFixed(1)}d</span>` : '') +
+    (viniTats.length   ? `<span class="tag" style="font-size:12px;font-weight:700;color:var(--green)">Vini: ${avg(viniTats).toFixed(1)}d</span>` : '') +
+    (agentPills ? `<span class="tag" style="width:100%;background:transparent;padding:5px 0 1px;font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Vini by Agent</span>` + agentPills : '');
 
   // ARR in Funnel — ARR big, enterprise count small
   document.getElementById('kpi-funnel-arr').textContent = fmt$(funnelARR);
