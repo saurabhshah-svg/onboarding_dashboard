@@ -774,6 +774,7 @@ function parseVini(rows) {
     groupType:   getCol(r,cm,'group / single'),
     projectionDate: parseDate(getCol(r,cm,'projected live date')),
     goLiveDate:  parseDate(getCol(r,cm,'go-live date')),
+    obCallDate:  parseDate(getCol(r,cm,'ob call date')),
     blockedReason: getCol(r,cm,'blocked owner'),
     blockedRemarks: getCol(r,cm,'blocked remarks'),
     unblockOwner: getCol(r,cm,'who is currently working to unblock? (add person name)'),
@@ -807,6 +808,7 @@ function parseAmer(rows) {
     flow:        getCol(r,cm,'flow'),
     projectionDate: parseDate(getCol(r,cm,'projected live date')),
     goLiveDate:  parseDate(getCol(r,cm,'go-live date')),
+    obCallDate:  parseDate(getCol(r,cm,'ob call date')),
     blockedReason: getCol(r,cm,'blocked owner'),
     blockedRemarks: getCol(r,cm,'blocked remarks'),
     unblockOwner: getCol(r,cm,'who is currently working to unblock? (add person name)'),
@@ -843,6 +845,8 @@ function parseApacEmea(rows) {
       region:      region || 'APAC',
       projectionDate: parseDate(getCol(r,cm,'projected live date')),
       goLiveDate:  parseDate(getCol(r,cm,'go-live date')),
+      obCallDate:  parseDate(getCol(r,cm,'ob call date')),
+    obCallDate:  parseDate(getCol(r,cm,'ob call date')),
       blockedReason: getCol(r,cm,'blocked bucketing','blocked owner'),
       blockedRemarks: getCol(r,cm,'blocked remarks'),
       unblockOwner: getCol(r,cm,'who is currently working to unblock? (add person name)'),
@@ -1315,6 +1319,7 @@ function renderEmailView(rows) {
   const todayRows = sched.filter(r => isDay(r.projectionDate, d0));
   const weekRows  = sched.filter(r => inRange(r.projectionDate, d0, endWeek));
   const yestRows  = rows.filter(r => isLive(r) && isDay(r.goLiveDate, dYest));
+  const obYestRows = rows.filter(r => isDay(r.obCallDate, dYest));   // entered OB yesterday (OB Call Date)
 
   const heading = TODAY.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 
@@ -1322,14 +1327,16 @@ function renderEmailView(rows) {
   const larrStudio = BASE_LARR_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio;
   const larrVini   = BASE_LARR_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini;
 
-  // Compact KPI card
-  const C = (label,value,sub,accent) => `<div style="background:#fff;border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:10px 12px"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${label}</div><div style="font-size:18px;font-weight:800;color:var(--text);margin-top:2px;line-height:1.05">${value}</div>${sub?`<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.35">${sub}</div>`:''}</div>`;
+  // Compact KPI card — pass bg/vcol to highlight a card
+  const C = (label,value,sub,accent,bg,vcol) => `<div style="background:${bg||'#fff'};border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:10px 12px"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${label}</div><div style="font-size:18px;font-weight:800;color:${vcol||'var(--text)'};margin-top:2px;line-height:1.05">${value}</div>${sub?`<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.35">${sub}</div>`:''}</div>`;
+  const G = ['#16A34A','#F0FDF4','#16A34A'];   // highlight: green accent, green tint bg, green value
 
   const cards = [
-    C('Went Live Yesterday', fmtC(sum(yestRows)), uniq(yestRows)+' accounts', 'var(--green)'),
-    C('ARR Going Live Today', fmtC(sum(todayRows)), 'This week: '+fmtC(sum(weekRows)), '#16A34A'),
+    C('Went Live Yesterday', fmtC(sum(yestRows)), uniq(yestRows)+' accounts', ...G),
+    C('ARR Going Live Today', fmtC(sum(todayRows)), 'This week: '+fmtC(sum(weekRows)), ...G),
+    C('Live This Month', fmtC(liveARR), uniq(liveRows)+' enterprises', ...G),
+    C('Came In OB Yesterday', fmtC(sum(obYestRows)), uniq(obYestRows)+' accounts', 'var(--blue)'),
     C('Total LARR', fmtC(totalLARR), `Studio ${fmtC(larrStudio)} · Vini ${fmtC(larrVini)}`, 'var(--blue)'),
-    C('Live This Month', fmtC(liveARR), uniq(liveRows)+' enterprises', 'var(--green)'),
     C('Expected Go-Live', fmtC(expARR), `Conf ${fmtC(expConfARR)} · Up ${fmtC(expARR-expConfARR)}`, 'var(--amber)'),
     C('Exp. Month-End LARR', fmtC(meLARR), 'Confirmed-only '+fmtC(meLARRConf), 'var(--blue)'),
     C('Blocked ARR (Upside)', fmtC(blockedARR), `Studio ${fmtC(sum(blockedRows.filter(isStudio)))} · Vini ${fmtC(sum(blockedRows.filter(isVini)))}`, '#D97706'),
