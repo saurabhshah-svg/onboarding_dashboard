@@ -499,7 +499,10 @@ const EMBEDDED_DATA = {
 
 <!-- Email View Tab -->
 <div id="tab-email" class="main">
-  <div id="email-content" style="padding:20px 16px"></div>
+  <div style="max-width:680px;margin:16px auto 10px;display:flex;justify-content:flex-end;padding:0 16px">
+    <button id="slack-btn" onclick="sendToSlack(this)" style="background:#4A154B;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">Send to Slack</button>
+  </div>
+  <div id="email-content" style="padding:0 16px 20px"></div>
 </div>
 
 <!-- Setup Guide Modal -->
@@ -1383,6 +1386,23 @@ function renderEmailView(rows) {
         <div>${secHead('Vini','#065f46',viniG.length,sum(todayRows.filter(isVini)))}${viniTable}</div>
       </div>
     </div>`;
+}
+
+// Trigger the Apps Script to post the daily report to Slack (server-side webhook).
+async function sendToSlack(btn) {
+  if (!APPS_SCRIPT_URL || !APPS_SCRIPT_URL.trim()) { btn.textContent = 'Live data not configured'; return; }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const res = await fetch(APPS_SCRIPT_URL + '?action=slack');
+    const j = await res.json();
+    const ok = j && j.ok && j.slack && j.slack.code >= 200 && j.slack.code < 300;
+    btn.textContent = ok ? '✅ Sent to Slack' : '⚠ Failed — check setup';
+    if (!ok) console.error('Slack send failed:', j);
+  } catch (e) {
+    btn.textContent = '⚠ Failed'; console.error(e);
+  }
+  setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 4000);
 }
 
 // ─── OVERVIEW ────────────────────────────────────────────────
