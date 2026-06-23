@@ -499,7 +499,7 @@ const EMBEDDED_DATA = {
 
 <!-- Email View Tab -->
 <div id="tab-email" class="main">
-  <div style="max-width:680px;margin:16px auto 10px;display:flex;justify-content:flex-end;padding:0 16px">
+  <div style="max-width:520px;margin:16px auto 10px;display:flex;justify-content:flex-end;padding:0 16px">
     <button id="slack-btn" onclick="sendToSlack(this)" style="background:#4A154B;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">Send to Slack</button>
   </div>
   <div id="email-content" style="padding:0 16px 20px"></div>
@@ -1331,7 +1331,7 @@ function renderEmailView(rows) {
   const larrVini   = BASE_LARR_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini;
 
   // Compact KPI card — pass bg/vcol to highlight a card
-  const C = (label,value,sub,accent,bg,vcol) => `<div style="background:${bg||'#fff'};border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:10px 12px"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${label}</div><div style="font-size:18px;font-weight:800;color:${vcol||'var(--text)'};margin-top:2px;line-height:1.05">${value}</div>${sub?`<div style="font-size:10px;color:var(--muted);margin-top:3px;line-height:1.35">${sub}</div>`:''}</div>`;
+  const C = (label,value,sub,accent,bg,vcol) => `<div style="background:${bg||'#fff'};border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:11px 13px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${label}</div><div style="font-size:20px;font-weight:800;color:${vcol||'var(--text)'};margin-top:3px;line-height:1.05">${value}</div>${sub?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.35">${sub}</div>`:''}</div>`;
   const G = ['#16A34A','#F0FDF4','#16A34A'];   // highlight: green accent, green tint bg, green value
 
   const cards = [
@@ -1359,29 +1359,29 @@ function renderEmailView(rows) {
     });
     return Object.values(m).sort((a,b)=>b.arr-a.arr);
   };
-  const th   = (t,a) => `<th style="padding:7px 10px;text-align:${a||'left'};font-size:9px;text-transform:uppercase;color:var(--muted)">${t}</th>`;
+  const th   = (t,a) => `<th style="padding:8px 10px;text-align:${a||'left'};font-size:11.5px;text-transform:uppercase;color:var(--muted)">${t}</th>`;
   const cell = (v,a,bold) => `<td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:${a||'left'};${bold?'font-weight:600;color:var(--text)':'color:var(--muted)'}">${v}</td>`;
-  const secHead = (label,color,n,arr) => `<div style="display:flex;justify-content:space-between;align-items:center;background:${color};color:#fff;padding:8px 14px;border-radius:8px 8px 0 0;font-weight:700;font-size:13px"><span>${label}</span><span style="font-size:12px;font-weight:600">${n} ent · ${fmt$(arr)}</span></div>`;
+  const secHead = (label,color,n,arr) => `<div style="display:flex;justify-content:space-between;align-items:center;background:${color};color:#fff;padding:10px 14px;border-radius:8px 8px 0 0;font-weight:700;font-size:15px"><span>${label}</span><span style="font-size:13px;font-weight:600">${n} ent · ${fmt$(arr)}</span></div>`;
 
   const studioG = grp(todayRows.filter(isStudio), true);
   const viniG   = grp(todayRows.filter(isVini), false);
 
   const studioTable = studioG.length
-    ? `<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid var(--border);border-top:none"><thead><tr style="background:#F8FAFC">${th('Enterprise')}${th('Rooftops','center')}${th('Product')}${th('ARR','right')}${th('OB POC')}</tr></thead><tbody>${studioG.map(g=>`<tr>${cell(g.ent,'left',true)}${cell(g.n,'center',true)}${cell([...g.prod].join(', ')||'—')}${cell(fmt$(g.arr),'right',true)}${cell([...g.poc].join(', ')||'—')}</tr>`).join('')}</tbody></table>`
-    : `<div style="border:1px solid var(--border);border-top:none;padding:12px;color:var(--muted);font-size:12.5px">No Studio accounts scheduled today.</div>`;
+    ? `<table style="width:100%;border-collapse:collapse;font-size:13.5px;border:1px solid var(--border);border-top:none"><thead><tr style="background:#F8FAFC">${th('Enterprise')}${th('Rooftops','center')}${th('Product')}${th('ARR','right')}${th('OB POC')}</tr></thead><tbody>${studioG.map(g=>`<tr>${cell(g.ent,'left',true)}${cell(g.n,'center',true)}${cell([...g.prod].join(', ')||'—')}${cell(fmt$(g.arr),'right',true)}${cell([...g.poc].join(', ')||'—')}</tr>`).join('')}</tbody></table>`
+    : `<div style="border:1px solid var(--border);border-top:none;padding:14px;color:var(--muted);font-size:13.5px">No Studio accounts scheduled today.</div>`;
   const viniTable = viniG.length
-    ? `<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid var(--border);border-top:none"><thead><tr style="background:#F8FAFC">${th('Enterprise')}${th('Agents','center')}${th('ARR','right')}${th('OB POC')}</tr></thead><tbody>${viniG.map(g=>`<tr>${cell(g.ent,'left',true)}${cell(g.n,'center',true)}${cell(fmt$(g.arr),'right',true)}${cell([...g.poc].join(', ')||'—')}</tr>`).join('')}</tbody></table>`
-    : `<div style="border:1px solid var(--border);border-top:none;padding:12px;color:var(--muted);font-size:12.5px">No Vini accounts scheduled today.</div>`;
+    ? `<table style="width:100%;border-collapse:collapse;font-size:13.5px;border:1px solid var(--border);border-top:none"><thead><tr style="background:#F8FAFC">${th('Enterprise')}${th('Agents','center')}${th('ARR','right')}${th('OB POC')}</tr></thead><tbody>${viniG.map(g=>`<tr>${cell(g.ent,'left',true)}${cell(g.n,'center',true)}${cell(fmt$(g.arr),'right',true)}${cell([...g.poc].join(', ')||'—')}</tr>`).join('')}</tbody></table>`
+    : `<div style="border:1px solid var(--border);border-top:none;padding:14px;color:var(--muted);font-size:13.5px">No Vini accounts scheduled today.</div>`;
 
   document.getElementById('email-content').innerHTML = `
-    <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden">
+    <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden">
       <div style="background:#0F2350;color:#fff;padding:20px 24px;text-align:center">
         <div style="font-size:10.5px;font-weight:700;letter-spacing:2px;opacity:.65;text-transform:uppercase">Spyne · Onboarding · Daily Snapshot</div>
         <div style="font-size:26px;font-weight:800;margin-top:6px;letter-spacing:.3px">OB Report — ${heading}</div>
       </div>
       <div style="padding:18px">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${cards}</div>
-        <div style="font-size:15px;font-weight:800;color:var(--text);margin:22px 0 10px">Scheduled to Go-Live Today <span style="font-weight:600;color:var(--muted);font-size:12.5px">(${uniq(todayRows)} ent · ${fmt$(sum(todayRows))})</span></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">${cards}</div>
+        <div style="font-size:17.5px;font-weight:800;color:var(--text);margin:22px 0 10px">Scheduled to Go-Live Today <span style="font-weight:600;color:var(--muted);font-size:13px">(${uniq(todayRows)} ent · ${fmt$(sum(todayRows))})</span></div>
         <div style="margin-bottom:14px">${secHead('Studio','#1e40af',studioG.length,sum(todayRows.filter(isStudio)))}${studioTable}</div>
         <div>${secHead('Vini','#065f46',viniG.length,sum(todayRows.filter(isVini)))}${viniTable}</div>
       </div>
