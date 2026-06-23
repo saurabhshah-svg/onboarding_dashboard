@@ -179,6 +179,7 @@ const EMBEDDED_DATA = {
   <div class="tab" onclick="switchTab('vini')">Vini</div>
   <div class="tab" onclick="switchTab('programs')">Programs</div>
   <div class="tab" onclick="switchTab('analytics')">Analytics</div>
+  <div class="tab" onclick="switchTab('email')">Email View</div>
 </div>
 
 <!-- Filter bars -->
@@ -494,6 +495,11 @@ const EMBEDDED_DATA = {
       <div id="wentlive-content"></div>
     </div>
   </div>
+</div>
+
+<!-- Email View Tab -->
+<div id="tab-email" class="main">
+  <div id="email-content" style="padding:20px 16px"></div>
 </div>
 
 <!-- Setup Guide Modal -->
@@ -892,7 +898,7 @@ function showErrorBanner(msg) {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab').forEach((el,i) => {
-    const tabs = ['overview','studio','vini','programs','analytics'];
+    const tabs = ['overview','studio','vini','programs','analytics','email'];
     el.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.main').forEach(el => el.classList.remove('active'));
@@ -1015,6 +1021,8 @@ function renderAll() {
     renderPrograms(allRows);
   } else if (currentTab === 'analytics') {
     renderAnalytics(allRows);
+  } else if (currentTab === 'email') {
+    renderEmailView(allRows);
   }
 }
 
@@ -1270,6 +1278,99 @@ function programSegment(label, color, segRows) {
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">${upsideTable}</div>
     </div>
   </div>`;
+}
+
+// ─── EMAIL VIEW (daily vertical report) ──────────────────────
+function renderEmailView(rows) {
+  const sum  = a => a.reduce((s,r)=>s+r.arr,0);
+  const uniq = a => new Set(a.map(r=>r.entityName||r.rooftopName||'?')).size;
+  const isStudio = r => r.source !== 'vini';
+  const isVini   = r => r.source === 'vini';
+
+  // Date references
+  const d0      = new Date(CY, CM, TODAY.getDate());                       // today (midnight)
+  const dYest   = new Date(CY, CM, TODAY.getDate()-1);                     // yesterday
+  const endWeek = new Date(CY, CM, TODAY.getDate() + ((7 - d0.getDay()) % 7)); // upcoming Sunday (today if Sun)
+  const dayOf   = d => d ? new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime() : null;
+  const isDay   = (d,ref) => dayOf(d) === ref.getTime();
+  const inRange = (d,a,b) => { const x=dayOf(d); return x!==null && x>=a.getTime() && x<=b.getTime(); };
+
+  // Core (whole-company) metrics — mirror the Overview "All" view
+  const liveRows    = rows.filter(liveThisMonth);
+  const dropRows    = rows.filter(droppedThisMonth);
+  const expRows     = rows.filter(expThisMonth);
+  const funnelRows  = rows.filter(isInFunnel);
+  const blockedRows = rows.filter(r => r.currentMonthConf === 'Upside');
+  const liveARR=sum(liveRows), dropARR=sum(dropRows), expARR=sum(expRows), funnelARR=sum(funnelRows), blockedARR=sum(blockedRows);
+  const totalLARR  = BASE_LARR + liveARR - dropARR - REVENUE_LOSS;
+  const expConfARR = sum(expRows.filter(isConfirmed));
+  const meLARR     = totalLARR + expARR;
+  const meLARRConf = totalLARR + expConfARR;
+  const stTat = avg(rows.filter(isStudio).map(r=>r.liveTat).filter(x=>x>0));
+  const viTat = avg(rows.filter(isVini).map(r=>r.liveTat).filter(x=>x>0));
+  const avgTat = avg(rows.map(r=>r.liveTat).filter(x=>x>0));
+
+  // Daily pulse
+  const sched     = rows.filter(r => !isLive(r) && !isDropped(r));
+  const todayRows = sched.filter(r => isDay(r.projectionDate, d0));
+  const weekRows  = sched.filter(r => inRange(r.projectionDate, d0, endWeek));
+  const yestRows  = rows.filter(r => isLive(r) && isDay(r.goLiveDate, dYest));
+
+  const heading = TODAY.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+
+  const C = (label,value,sub,accent) => `
+    <div style="background:#fff;border:1px solid var(--border);border-left:4px solid ${accent};border-radius:10px;padding:13px 15px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)">${label}</div>
+      <div style="font-size:21px;font-weight:800;color:var(--text);margin-top:3px;line-height:1.1">${value}</div>
+      ${sub?`<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">${sub}</div>`:''}
+    </div>`;
+
+  const list = (label, color, items) => {
+    const head = `<div style="display:flex;justify-content:space-between;align-items:center;background:${color};color:#fff;padding:9px 14px;border-radius:8px 8px 0 0;font-weight:700;font-size:13px"><span>${label}</span><span style="font-size:12px;font-weight:600">${items.length} acct · ${fmt$(sum(items))}</span></div>`;
+    if (!items.length) return `<div style="margin-bottom:14px">${head}<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;padding:14px;color:var(--muted);font-size:13px">No accounts scheduled to go live today.</div></div>`;
+    const body = items.slice().sort((a,b)=>b.arr-a.arr).map(r=>`
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid var(--border);font-weight:600">${r.entityName||r.rooftopName||'—'}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid var(--border);text-align:right">${fmt$(r.arr)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted)">${r.obPoc||'—'}</td>
+      </tr>`).join('');
+    return `<div style="margin-bottom:14px">${head}
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid var(--border);border-top:none">
+        <thead><tr style="background:#F8FAFC">
+          <th style="padding:7px 12px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">Account</th>
+          <th style="padding:7px 12px;text-align:right;font-size:10px;text-transform:uppercase;color:var(--muted)">ARR</th>
+          <th style="padding:7px 12px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--muted)">OB POC</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table></div>`;
+  };
+
+  const cards = [
+    C('ARR Went Live Yesterday', fmt$(sum(yestRows)), uniq(yestRows)+' accounts', 'var(--green)'),
+    C('ARR Going Live', fmt$(sum(todayRows)), 'Today · This week: '+fmt$(sum(weekRows)), '#16A34A'),
+    C('Total LARR', fmt$(totalLARR), `Base ${fmt$(BASE_LARR)} · +${fmt$(liveARR)} live · −${fmt$(REVENUE_LOSS)} churn`, 'var(--blue)'),
+    C('Live This Month', fmt$(liveARR), uniq(liveRows)+' enterprises went live', 'var(--green)'),
+    C('Expected Go-Live', fmt$(expARR), `Confirmed ${fmt$(expConfARR)} · Upside ${fmt$(expARR-expConfARR)}`, 'var(--amber)'),
+    C('Expected Month-End LARR', fmt$(meLARR), 'If only Confirmed: '+fmt$(meLARRConf), 'var(--blue)'),
+    C('Blocked ARR (Upside)', fmt$(blockedARR), `Studio ${fmt$(sum(blockedRows.filter(isStudio)))} · Vini ${fmt$(sum(blockedRows.filter(isVini)))}`, '#D97706'),
+    C('Avg OB Time (days)', (avgTat?avgTat.toFixed(1):'—'), `Studio ${stTat.toFixed(1)}d · Vini ${viTat.toFixed(1)}d`, 'var(--purple)'),
+    C('ARR in Funnel', fmt$(funnelARR), uniq(funnelRows)+' enterprises in funnel', 'var(--blue)')
+  ].join('');
+
+  document.getElementById('email-content').innerHTML = `
+    <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden">
+      <div style="background:#0F2350;color:#fff;padding:18px 24px">
+        <div style="font-size:13px;font-weight:700;letter-spacing:1px">SPYNE · ONBOARDING</div>
+        <div style="font-size:12px;opacity:.7;margin-top:2px">Daily Performance Snapshot</div>
+      </div>
+      <div style="padding:24px 22px">
+        <div style="text-align:center;font-size:30px;font-weight:800;color:var(--text);margin-bottom:20px">OB Report — ${heading}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${cards}</div>
+        <div style="font-size:16px;font-weight:800;color:var(--text);margin:26px 0 12px">Scheduled to Go-Live Today <span style="font-weight:600;color:var(--muted);font-size:13px">(${todayRows.length} acct · ${fmt$(sum(todayRows))})</span></div>
+        ${list('Studio', '#1e40af', todayRows.filter(isStudio))}
+        ${list('Vini', '#065f46', todayRows.filter(isVini))}
+      </div>
+    </div>`;
 }
 
 // ─── OVERVIEW ────────────────────────────────────────────────
