@@ -1,0 +1,25 @@
+name: Daily OB Report → Slack
+
+on:
+  schedule:
+    - cron: '30 3 * * *'      # 03:30 UTC = 09:00 IST (GitHub cron may run a few min late)
+  workflow_dispatch: {}        # lets you run it manually from the Actions tab
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Playwright (Chromium)
+        run: |
+          npm install playwright@1
+          npx playwright install --with-deps chromium
+      - name: Screenshot report and post to Slack
+        env:
+          REPORT_URL: https://spyne-onboarding-dashboard.vercel.app/#email
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: node .github/scripts/daily-report.js
