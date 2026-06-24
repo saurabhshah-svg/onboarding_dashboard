@@ -148,6 +148,20 @@ tr:hover td { background:#F8FAFC; }
 .font-bold { font-weight:700; }
 .empty-state { text-align:center; padding:40px; color:var(--muted); }
 .row-total { background:#F8FAFC; font-weight:700; }
+/* ── Display (TV) board ───────────────────────────────────── */
+#tab-display { padding: 0 !important; }
+#display-board { height: calc(100vh - 150px); display:flex; flex-direction:column; gap:10px; padding:10px 14px; box-sizing:border-box; overflow:hidden; background:var(--bg); }
+#display-board:fullscreen { height:100vh !important; padding:16px 22px; overflow:hidden; }
+.disp-card { background:var(--card); border-radius:10px; box-shadow:var(--shadow); border-left:4px solid var(--blue); padding:10px 14px; display:flex; flex-direction:column; justify-content:center; }
+.disp-kpi-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); }
+.disp-kpi-val { font-size:clamp(20px,2.4vw,34px); font-weight:800; color:var(--text); line-height:1.05; margin-top:2px; }
+.disp-tbl { width:100%; border-collapse:collapse; }
+.disp-tbl th { font-size:clamp(9px,.8vw,12px); text-transform:uppercase; letter-spacing:.3px; color:var(--muted); text-align:right; padding:5px 8px; border-bottom:2px solid var(--border); }
+.disp-tbl th:first-child { text-align:left; }
+.disp-tbl td { font-size:clamp(11px,1vw,15px); padding:5px 8px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap; }
+.disp-tbl td:first-child { text-align:left; font-weight:600; }
+.disp-tbl tr.disp-total td { font-weight:800; background:#F8FAFC; border-top:2px solid var(--border); }
+.disp-sec-hd { color:#fff; font-weight:800; font-size:clamp(13px,1.2vw,17px); padding:7px 12px; border-radius:8px 8px 0 0; display:flex; justify-content:space-between; align-items:center; }
 </style>
 </head>
 <body>
@@ -180,6 +194,7 @@ const EMBEDDED_DATA = {
   <div class="tab" onclick="switchTab('programs')">Programs</div>
   <div class="tab" onclick="switchTab('analytics')">Analytics</div>
   <div class="tab" onclick="switchTab('email')">Email View</div>
+  <div class="tab" onclick="switchTab('display')">Display</div>
 </div>
 
 <!-- Filter bars -->
@@ -500,6 +515,11 @@ const EMBEDDED_DATA = {
 <!-- Email View Tab -->
 <div id="tab-email" class="main">
   <div id="email-content" style="padding:16px 16px 20px"></div>
+</div>
+
+<!-- Display (TV) Tab -->
+<div id="tab-display" class="main">
+  <div id="display-board"></div>
 </div>
 
 <!-- Setup Guide Modal -->
@@ -907,7 +927,7 @@ function showErrorBanner(msg) {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab').forEach((el,i) => {
-    const tabs = ['overview','studio','vini','programs','analytics','email'];
+    const tabs = ['overview','studio','vini','programs','analytics','email','display'];
     el.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.main').forEach(el => el.classList.remove('active'));
@@ -1032,6 +1052,8 @@ function renderAll() {
     renderAnalytics(allRows);
   } else if (currentTab === 'email') {
     renderEmailView(allRows);
+  } else if (currentTab === 'display') {
+    renderDisplay(allRows);
   }
 }
 
@@ -1287,6 +1309,103 @@ function programSegment(label, color, segRows) {
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">${upsideTable}</div>
     </div>
   </div>`;
+}
+
+// ─── DISPLAY (TV war-room board) ─────────────────────────────
+function toggleDisplayFull() {
+  const el = document.getElementById('display-board');
+  if (!document.fullscreenElement) { el.requestFullscreen && el.requestFullscreen(); }
+  else { document.exitFullscreen && document.exitFullscreen(); }
+}
+
+function renderDisplay(rows) {
+  const fmtC = n => { n = Math.round(n); const a = Math.abs(n); return a>=1e6 ? '$'+(n/1e6).toFixed(2)+'M' : a>=1e3 ? '$'+(n/1e3).toFixed(1)+'K' : '$'+n; };
+  const sum = a => a.reduce((s,r)=>s+r.arr,0);
+  const isStudio = r => r.source !== 'vini', isVini = r => r.source === 'vini';
+  const isToday = d => d && d.getFullYear()===CY && d.getMonth()===CM && d.getDate()===TODAY.getDate();
+  const cleanT = v => { const s=(v||'').trim(); return /^#(ref|n\/a|value|div\/0|name|null|num)[!?]*$/i.test(s) ? '' : s; };
+
+  const liveRows = rows.filter(liveThisMonth), expRows = rows.filter(expThisMonth), dropRows = rows.filter(droppedThisMonth);
+  const todayRows = rows.filter(r => isInFunnel(r) && isToday(r.projectionDate));
+  const furtherRows = expRows.filter(r => !isToday(r.projectionDate));
+  const blockedRows = rows.filter(r => r.currentMonthConf === 'Upside');
+  const liveARR=sum(liveRows), furtherARR=sum(furtherRows), todayARR=sum(todayRows), blockedARR=sum(blockedRows);
+  const totalLARR = BASE_LARR + liveARR - sum(dropRows) - REVENUE_LOSS;
+  const meLARR = totalLARR + sum(expRows);
+
+  const kpi = (label,val,accent) => `<div class="disp-card" style="flex:1;border-left-color:${accent}"><div class="disp-kpi-label">${label}</div><div class="disp-kpi-val">${val}</div></div>`;
+  const topStrip = `<div style="display:flex;gap:10px">
+    ${kpi('Live This Month', fmtC(liveARR), 'var(--green)')}
+    ${kpi('Going Live Today', fmtC(todayARR), '#16A34A')}
+    ${kpi('Further Expected This Month', fmtC(furtherARR), 'var(--amber)')}
+    ${kpi('Blocked ARR (Upside)', fmtC(blockedARR), '#D97706')}
+    ${kpi('Projected Month-End LARR', fmtC(meLARR), 'var(--blue)')}
+  </div>`;
+
+  const byPoc = prod => {
+    const m = {};
+    const add = (poc,k,arr) => { poc=(poc||'').trim()||'Unassigned'; (m[poc]=m[poc]||{poc,live:0,further:0,blocked:0,today:0})[k]+=arr; };
+    prod.filter(liveThisMonth).forEach(r=>add(r.obPoc,'live',r.arr));
+    prod.filter(r=>expThisMonth(r)&&!isToday(r.projectionDate)).forEach(r=>add(r.obPoc,'further',r.arr));
+    prod.filter(r=>r.currentMonthConf==='Upside').forEach(r=>add(r.obPoc,'blocked',r.arr));
+    prod.filter(r=>isInFunnel(r)&&isToday(r.projectionDate)).forEach(r=>add(r.obPoc,'today',r.arr));
+    return Object.values(m).sort((a,b)=>(b.live-a.live)||(b.further-a.further)||(b.blocked-a.blocked));
+  };
+  const cv = v => v ? fmtC(v) : '<span style="color:var(--faint)">·</span>';
+  const peopleTable = (label,color,pocs) => {
+    const t = pocs.reduce((t,p)=>({live:t.live+p.live,further:t.further+p.further,blocked:t.blocked+p.blocked,today:t.today+p.today}),{live:0,further:0,blocked:0,today:0});
+    const body = pocs.map(p=>`<tr><td>${p.poc}</td><td style="color:var(--green)">${cv(p.live)}</td><td style="color:var(--amber)">${cv(p.further)}</td><td style="color:var(--red)">${cv(p.blocked)}</td><td style="color:var(--blue)">${cv(p.today)}</td></tr>`).join('');
+    return `<div style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--card);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
+      <div class="disp-sec-hd" style="background:${color}"><span>${label}</span></div>
+      <div style="overflow:hidden;flex:1"><table class="disp-tbl">
+        <thead><tr><th>OB POC</th><th>Live MTD</th><th>Further Exp</th><th>In Blocker</th><th>Live Today</th></tr></thead>
+        <tbody>${body}<tr class="disp-total"><td>TOTAL</td><td>${cv(t.live)}</td><td>${cv(t.further)}</td><td>${cv(t.blocked)}</td><td>${cv(t.today)}</td></tr></tbody>
+      </table></div>
+    </div>`;
+  };
+  const peopleZone = `<div style="display:flex;gap:10px;flex:1;min-height:0">
+    ${peopleTable('Studio','#1e40af',byPoc(rows.filter(isStudio)))}
+    ${peopleTable('Vini','#065f46',byPoc(rows.filter(isVini)))}
+  </div>`;
+
+  const ob = (label,val,color) => `<div style="text-align:center"><div class="disp-kpi-label">${label}</div><div class="disp-kpi-val" style="font-size:clamp(15px,1.7vw,23px);color:${color}">${val}</div></div>`;
+  const overallBar = `<div class="disp-card" style="flex-direction:row;justify-content:space-around;border-left-color:var(--purple);padding:7px 14px">
+    ${ob('Overall Live MTD', fmtC(liveARR), 'var(--green)')}
+    ${ob('Further Expected', fmtC(furtherARR), 'var(--amber)')}
+    ${ob('In Blocker', fmtC(blockedARR), 'var(--red)')}
+    ${ob('Going Live Today', fmtC(todayARR), 'var(--blue)')}
+  </div>`;
+
+  const internal = blockedRows.filter(r => (r.blockedReason||'').trim().toLowerCase() !== 'client').sort((a,b)=>b.arr-a.arr);
+  const MAXB = 8;
+  const blkBody = internal.slice(0,MAXB).map(r=>{
+    const owner=(r.unblockOwner||'').trim(), eta=(r.unblockEta||'').trim();
+    return `<tr>
+      <td>${r.entityName||r.rooftopName||'—'}</td>
+      <td style="text-align:left;color:var(--muted)">${isVini(r)?'Vini':'Studio'}</td>
+      <td>${fmtC(r.arr)}</td>
+      <td style="text-align:left;color:var(--muted)">${cleanT(r.blockedRemarks)||cleanT(r.blockedReason)||'—'}</td>
+      <td style="text-align:left">${owner||'<span style="color:var(--red)">—</span>'}</td>
+      <td style="text-align:left">${eta||'<span style="color:var(--red);font-weight:700">No ETA</span>'}</td>
+    </tr>`;
+  }).join('');
+  const blkZone = `<div style="display:flex;flex-direction:column;background:var(--card);border-radius:10px;box-shadow:var(--shadow);overflow:hidden;flex-shrink:0;max-height:36%">
+    <div class="disp-sec-hd" style="background:#b91c1c"><span>🚧 Internal Blockers to Clear</span><span style="font-size:.8em">${internal.length} accts · ${fmtC(sum(internal))}${internal.length>MAXB?' · top '+MAXB:''}</span></div>
+    <div style="overflow:hidden;flex:1">${internal.length
+      ? `<table class="disp-tbl"><thead><tr><th>Account</th><th style="text-align:left">Product</th><th>ARR</th><th style="text-align:left">Blocker</th><th style="text-align:left">Unblocking</th><th style="text-align:left">ETA</th></tr></thead><tbody>${blkBody}</tbody></table>`
+      : '<div style="padding:18px;color:var(--muted);font-size:14px">No internal blockers right now. 🎉</div>'}</div>
+  </div>`;
+
+  const heading = TODAY.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('display-board').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:clamp(16px,1.9vw,26px);font-weight:800;color:var(--text)">OB Live Board <span style="color:var(--muted);font-weight:600;font-size:.7em">— ${heading}</span></div>
+      <button onclick="toggleDisplayFull()" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer">⛶ Fullscreen</button>
+    </div>
+    ${topStrip}
+    ${peopleZone}
+    ${overallBar}
+    ${blkZone}`;
 }
 
 // ─── EMAIL VIEW (daily vertical report) ──────────────────────
