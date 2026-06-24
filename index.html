@@ -1333,26 +1333,21 @@ function renderEmailView(rows) {
   // Compact KPI card — pass bg/vcol to highlight a card
   // Label reserves 2 lines (min-height) and bottom-aligns, so the number always
   // sits on the 3rd line and aligns across cards regardless of label wrapping.
-  const C = (label,value,sub,accent,bg,vcol) => `<div style="background:${bg||'#fff'};border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:11px 13px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);min-height:2.4em;display:flex;align-items:flex-end;line-height:1.2">${label}</div><div style="font-size:21px;font-weight:800;color:${vcol||'var(--text)'};margin-top:4px;line-height:1.05">${value}</div>${sub?`<div style="font-size:13.5px;color:var(--muted);margin-top:4px;line-height:1.3">${sub}</div>`:''}</div>`;
-  const G = ['#16A34A','#F0FDF4','#16A34A'];   // highlight: green accent, green tint bg, green value
-
+  const C = (label,value,sub,accent,bg,vcol) => `<div style="background:${bg||'#fff'};border:1px solid var(--border);border-left:3px solid ${accent};border-radius:8px;padding:11px 13px"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);min-height:2.4em;display:flex;align-items:flex-end;line-height:1.2">${label}</div><div style="font-size:21px;font-weight:800;color:${vcol||'var(--text)'};margin-top:4px;line-height:1.05">${value}</div>${sub?`<div style="font-size:10.5px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub}</div>`:''}</div>`;
   // "Further" = expected to go live later this month (excludes today, shown separately)
   const furtherRows = expRows.filter(r => !isDay(r.projectionDate, d0));
   const furtherARR  = furtherRows.reduce((s, r) => s + r.arr, 0);
   const furtherConf = furtherRows.filter(isConfirmed).reduce((s, r) => s + r.arr, 0);
 
-  const g1 = [
+  // One continuous sequence; "live" cards get a green left-border (no green fill).
+  const cards = [
     C('Total LARR', fmtC(totalLARR), `S ${fmtC(larrStudio)} · V ${fmtC(larrVini)}`, 'var(--blue)'),
-    C('Live This Month', fmtC(liveARR), uniq(liveRows) + ' enterprises', ...G),
-    C('Went Live Yesterday', fmtC(sum(yestRows)), uniq(yestRows) + ' accounts', ...G),
-    C('Came In OB Yesterday', fmtC(sum(obYestRows)), uniq(obYestRows) + ' accounts', 'var(--blue)')
-  ].join('');
-  const g2 = [
-    C('ARR Going Live Today', fmtC(sum(todayRows)), 'This week: ' + fmtC(sum(weekRows)), ...G),
-    C('Further Expected Go-Live This Month', fmtC(furtherARR), `Conf ${fmtC(furtherConf)} · Up ${fmtC(furtherARR - furtherConf)}`, 'var(--amber)'),
-    C('Projected Month-End LARR', fmtC(meLARR), 'Confirmed-only ' + fmtC(meLARRConf), 'var(--blue)')
-  ].join('');
-  const g3 = [
+    C('Live This Month', fmtC(liveARR), uniq(liveRows) + ' enterprises', 'var(--green)'),
+    C('Went Live Yesterday', fmtC(sum(yestRows)), uniq(yestRows) + ' accounts', 'var(--green)'),
+    C('Came In OB Yesterday', fmtC(sum(obYestRows)), uniq(obYestRows) + ' accounts', 'var(--blue)'),
+    C('ARR Going Live Today', fmtC(sum(todayRows)), 'This week: ' + fmtC(sum(weekRows)), 'var(--green)'),
+    C('Further Expected Go-Live This Month', fmtC(furtherARR), `C ${fmtC(furtherConf)} · U ${fmtC(furtherARR - furtherConf)}`, 'var(--amber)'),
+    C('Projected Month-End LARR', fmtC(meLARR), 'Confirmed-only ' + fmtC(meLARRConf), 'var(--blue)'),
     C('ARR in Funnel', fmtC(funnelARR), uniq(funnelRows) + ' enterprises', 'var(--blue)'),
     C('Blocked ARR (Upside)', fmtC(blockedARR), `S ${fmtC(sum(blockedRows.filter(isStudio)))} · V ${fmtC(sum(blockedRows.filter(isVini)))}`, '#D97706'),
     C('Avg OB Time (days)', (avgTat ? avgTat.toFixed(1) : '—'), `S ${stTat.toFixed(1)}d · V ${viTat.toFixed(1)}d`, 'var(--purple)')
@@ -1391,9 +1386,7 @@ function renderEmailView(rows) {
         <div style="font-size:26px;font-weight:800;margin-top:6px;letter-spacing:.3px">OB Report — ${heading}</div>
       </div>
       <div style="padding:18px">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">${g1}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:8px">${g2}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:8px">${g3}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">${cards}</div>
         <div style="font-size:17.5px;font-weight:800;color:var(--text);margin:22px 0 10px">Scheduled to Go-Live Today <span style="font-weight:600;color:var(--muted);font-size:13px">(${uniq(todayRows)} ent · ${fmt$(sum(todayRows))})</span></div>
         <div style="margin-bottom:14px">${secHead('Studio','#1e40af',studioG.length,sum(todayRows.filter(isStudio)))}${studioTable}</div>
         <div>${secHead('Vini','#065f46',viniG.length,sum(todayRows.filter(isVini)))}${viniTable}</div>
