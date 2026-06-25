@@ -1976,17 +1976,19 @@ function renderAccountTree(containerId, rows, showAgent) {
   const keys = Object.keys(months).sort((a,b)=> a==='none'?1 : b==='none'?-1 : a.localeCompare(b));
 
   let gid = 0;
-  const sections = keys.map(k => {
-    const mrows = months[k];
+  const confColor = { Confirmed:'#16A34A', Upside:'#D97706', Unconfirmed:'#64748B' };
+  const confOf = r => r.currentMonthConf==='Confirmed' ? 'Confirmed' : r.currentMonthConf==='Upside' ? 'Upside' : 'Unconfirmed';
+
+  const buildEnts = rws => {
     const ents = {};
-    mrows.forEach(r => { const e=r.entityName||r.rooftopName||'—'; (ents[e]=ents[e]||[]).push(r); });
+    rws.forEach(r => { const e=r.entityName||r.rooftopName||'—'; (ents[e]=ents[e]||[]).push(r); });
     const entKeys = Object.keys(ents).sort((a,b)=> ents[b].reduce((s,r)=>s+r.arr,0) - ents[a].reduce((s,r)=>s+r.arr,0));
-    const entRows = entKeys.map(e => {
+    return entKeys.map(e => {
       const items = ents[e].slice().sort((a,b)=>b.arr-a.arr);
       const id = containerId+'-g'+(gid++);
       const eArr = items.reduce((s,r)=>s+r.arr,0);
       const childRows = items.map(it => `<tr class="tree-child ${id}" style="display:none;background:#fbfcfe">
-        <td style="padding:6px 10px 6px 36px;border-bottom:1px solid var(--border)">${it.rooftopName||it.entityName||'—'}${showAgent&&it.agent?` <span style="color:var(--faint)">· ${it.agent}</span>`:''}<div style="font-size:10px;color:var(--muted)">${it.stage||''}${it.subStage?' · '+it.subStage:''}</div></td>
+        <td style="padding:6px 10px 6px 50px;border-bottom:1px solid var(--border)">${it.rooftopName||it.entityName||'—'}${showAgent&&it.agent?` <span style="color:var(--faint)">· ${it.agent}</span>`:''}<div style="font-size:10px;color:var(--muted)">${it.stage||''}${it.subStage?' · '+it.subStage:''}</div></td>
         <td class="td-right" style="border-bottom:1px solid var(--border)">${fmt$(it.arr)}</td>
         <td style="border-bottom:1px solid var(--border)">${it.obPoc||'—'}</td>
         <td style="border-bottom:1px solid var(--border)">${cleanTreeTxt(it.blockedReason)||'—'}</td>
@@ -1994,7 +1996,7 @@ function renderAccountTree(containerId, rows, showAgent) {
         <td class="td-muted" style="border-bottom:1px solid var(--border)">${dt(it.projectionDate)}</td>
       </tr>`).join('');
       return `<tr onclick="toggleTree('${id}',this)" style="cursor:pointer">
-        <td style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600"><span class="tree-caret" style="display:inline-block;width:14px;color:var(--muted)">▸</span>${e} <span style="font-weight:500;color:var(--muted);font-size:12px">(${items.length})</span></td>
+        <td style="padding:8px 10px 8px 34px;border-bottom:1px solid var(--border);font-weight:600"><span class="tree-caret" style="display:inline-block;width:14px;color:var(--muted)">▸</span>${e} <span style="font-weight:500;color:var(--muted);font-size:12px">(${items.length})</span></td>
         <td class="td-right" style="border-bottom:1px solid var(--border);font-weight:700">${fmt$(eArr)}</td>
         <td style="border-bottom:1px solid var(--border)">${uniqJoin(items.map(r=>r.obPoc))}</td>
         <td style="border-bottom:1px solid var(--border)">${uniqJoin(items.map(r=>r.blockedReason))}</td>
@@ -2002,7 +2004,20 @@ function renderAccountTree(containerId, rows, showAgent) {
         <td></td>
       </tr>${childRows}`;
     }).join('');
-    return `<tr><td colspan="6" style="background:var(--bg);padding:9px 12px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">${mLabel(k)} <span style="color:var(--blue)">· ${fmt$(mrows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${entKeys.length} ent · ${mrows.length} rooftops</span></td></tr>${entRows}`;
+  };
+
+  const sections = keys.map(k => {
+    const mrows = months[k];
+    const monthHdr = `<tr><td colspan="6" style="background:var(--bg);padding:9px 12px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">${mLabel(k)} <span style="color:var(--blue)">· ${fmt$(mrows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} rooftops</span></td></tr>`;
+    const byConf = { Confirmed:[], Upside:[], Unconfirmed:[] };
+    mrows.forEach(r => byConf[confOf(r)].push(r));
+    const confBlocks = ['Confirmed','Upside','Unconfirmed'].filter(c => byConf[c].length).map(c => {
+      const crows = byConf[c];
+      const nEnt = new Set(crows.map(r=>r.entityName||r.rooftopName||'—')).size;
+      const hdr = `<tr><td colspan="6" style="padding:6px 12px 6px 18px;font-weight:700;color:${confColor[c]};background:#fff;border-bottom:1px solid var(--border);border-left:4px solid ${confColor[c]}">${c} <span style="font-weight:600">· ${fmt$(crows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:500;font-size:12px">· ${nEnt} ent · ${crows.length} rooftops</span></td></tr>`;
+      return hdr + buildEnts(crows);
+    }).join('');
+    return monthHdr + confBlocks;
   }).join('');
 
   el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
