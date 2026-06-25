@@ -1566,12 +1566,16 @@ function renderOverview(filtered) {
   });
   const expConfirmedARR = expByConf.Confirmed.arr;   // used by Month-End LARR (confirmed-only)
   const expEntCount = uniqEnts(expRows);
+  const expStudio = expRows.filter(r=>r.source!=='vini').reduce((s,r)=>s+r.arr,0);
+  const expVini   = expRows.filter(r=>r.source==='vini').reduce((s,r)=>s+r.arr,0);
   const confColors = { Confirmed:'var(--green)', Upside:'var(--amber)', Unconfirmed:'var(--muted)' };
   document.getElementById('kpi-exp-tags').innerHTML =
     ['Confirmed','Upside','Unconfirmed']
       .filter(k => expByConf[k].arr > 0)
       .map(k => `<span class="tag" style="color:${confColors[k]}">${k}: ${expByConf[k].ents.size} ents (${fmt$(expByConf[k].arr)})</span>`)
-      .join('');
+      .join('')
+    + `<span class="tag" style="color:var(--blue);font-weight:700">Studio: ${fmt$(expStudio)}</span>`
+    + `<span class="tag" style="color:var(--green);font-weight:700">Vini: ${fmt$(expVini)}</span>`;
 
   // ── Total LARR breakdown by product (Studio / Vini) ──────────────────────────
   const larrByProduct = p => {
@@ -1641,10 +1645,10 @@ function renderOverview(filtered) {
 
   // Month-end LARR — headline assumes all projected go live; tag shows confirmed-only
   const meLARRConfirmed = totalLARR + expConfirmedARR;
-  document.getElementById('kpi-me-larr').textContent     = fmt$(meLARR);
-  document.getElementById('kpi-me-larr-sub').textContent = 'If all projected go live';
+  document.getElementById('kpi-me-larr').textContent     = fmt$(meLARRConfirmed);
+  document.getElementById('kpi-me-larr-sub').textContent = 'If only Confirmed go live';
   document.getElementById('kpi-me-larr-tags').innerHTML =
-    `<span class="tag" style="color:var(--green)">If only Confirmed: ${fmt$(meLARRConfirmed)}</span>`;
+    `<span class="tag" style="color:var(--muted)">All projected: ${fmt$(meLARR)}</span>`;
 
   // Avg OB Time
   document.getElementById('kpi-tat').textContent     = avgTat ? avgTat.toFixed(1) : '—';
