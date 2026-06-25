@@ -392,26 +392,8 @@ const EMBEDDED_DATA = {
   </div>
 
   <div class="section">
-    <div class="section-title">Studio Accounts</div>
-    <div class="table-wrap">
-      <table id="st-table">
-        <thead>
-          <tr>
-            <th onclick="sortStTable(0)">Account ↕</th>
-            <th onclick="sortStTable(1)">Region ↕</th>
-            <th onclick="sortStTable(2)">Stage ↕</th>
-            <th onclick="sortStTable(3)">Sub-Stage ↕</th>
-            <th class="td-right" onclick="sortStTable(4)">ARR ↕</th>
-            <th onclick="sortStTable(5)">POC ↕</th>
-            <th onclick="sortStTable(6)">Proj Live ↕</th>
-            <th onclick="sortStTable(7)">Go-Live ↕</th>
-            <th onclick="sortStTable(8)">Source ↕</th>
-            <th class="td-right" onclick="sortStTable(9)">TAT ↕</th>
-          </tr>
-        </thead>
-        <tbody id="st-tbody"></tbody>
-      </table>
-    </div>
+    <div class="section-title">Studio Accounts — In OB (by Projection Month)</div>
+    <div id="st-tree" style="max-height:66vh;overflow:auto"></div>
   </div>
 </div>
 
@@ -461,26 +443,8 @@ const EMBEDDED_DATA = {
   </div>
 
   <div class="section">
-    <div class="section-title">Vini Accounts</div>
-    <div class="table-wrap">
-      <table id="vi-table">
-        <thead>
-          <tr>
-            <th onclick="sortViTable(0)">Account ↕</th>
-            <th onclick="sortViTable(1)">Rooftop ↕</th>
-            <th onclick="sortViTable(2)">Stage ↕</th>
-            <th onclick="sortViTable(3)">Sub-Stage ↕</th>
-            <th class="td-right" onclick="sortViTable(4)">ARR ↕</th>
-            <th onclick="sortViTable(5)">POC ↕</th>
-            <th onclick="sortViTable(6)">Proj Live ↕</th>
-            <th onclick="sortViTable(7)">Go-Live ↕</th>
-            <th onclick="sortViTable(8)">Source ↕</th>
-            <th class="td-right" onclick="sortViTable(9)">TAT ↕</th>
-          </tr>
-        </thead>
-        <tbody id="vi-tbody"></tbody>
-      </table>
-    </div>
+    <div class="section-title">Vini Accounts — In OB (by Projection Month)</div>
+    <div id="vi-tree" style="max-height:66vh;overflow:auto"></div>
   </div>
 </div>
 
@@ -1984,6 +1948,72 @@ function sortPocTable(col) {
 }
 
 // ─── STUDIO TAB ───────────────────────────────────────────────
+// ─── Account tree (Studio/Vini): In-OB accounts, by Projection Month → Enterprise → line items ───
+function cleanTreeTxt(v){ const s=(v||'').trim(); return /^#(ref|n\/a|value|div\/0|name|null|num)[!?]*$/i.test(s) ? '' : s; }
+function toggleTree(id, rowEl){
+  const kids = document.querySelectorAll('.'+id);
+  const show = kids.length && kids[0].style.display === 'none';
+  kids.forEach(k => k.style.display = show ? 'table-row' : 'none');
+  const c = rowEl.querySelector('.tree-caret'); if (c) c.textContent = show ? '▾' : '▸';
+}
+function renderAccountTree(containerId, rows, showAgent) {
+  const inF = rows.filter(isInFunnel);   // OB Initiated / In Implementation only
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!inF.length) { el.innerHTML = '<div class="empty-state">No in-OB accounts</div>'; return; }
+
+  const mKey = r => r.projectionDate ? (r.projectionDate.getFullYear()+'-'+String(r.projectionDate.getMonth()+1).padStart(2,'0')) : 'none';
+  const mLabel = k => { if(k==='none') return 'No Projection Date'; const [y,m]=k.split('-'); return new Date(+y,+m-1,1).toLocaleString('en-US',{month:'long',year:'numeric'}); };
+  const uniqJoin = a => [...new Set(a.map(cleanTreeTxt).filter(Boolean))].join(', ') || '—';
+  const dt = d => d ? fmtDate(d) : '—';
+
+  const months = {};
+  inF.forEach(r => { const k=mKey(r); (months[k]=months[k]||[]).push(r); });
+  const keys = Object.keys(months).sort((a,b)=> a==='none'?1 : b==='none'?-1 : a.localeCompare(b));
+
+  let gid = 0;
+  const sections = keys.map(k => {
+    const mrows = months[k];
+    const ents = {};
+    mrows.forEach(r => { const e=r.entityName||r.rooftopName||'—'; (ents[e]=ents[e]||[]).push(r); });
+    const entKeys = Object.keys(ents).sort((a,b)=> ents[b].reduce((s,r)=>s+r.arr,0) - ents[a].reduce((s,r)=>s+r.arr,0));
+    const entRows = entKeys.map(e => {
+      const items = ents[e].slice().sort((a,b)=>b.arr-a.arr);
+      const id = containerId+'-g'+(gid++);
+      const eArr = items.reduce((s,r)=>s+r.arr,0);
+      const childRows = items.map(it => `<tr class="tree-child ${id}" style="display:none;background:#fbfcfe">
+        <td style="padding:6px 10px 6px 36px;border-bottom:1px solid var(--border)">${it.rooftopName||it.entityName||'—'}${showAgent&&it.agent?` <span style="color:var(--faint)">· ${it.agent}</span>`:''}<div style="font-size:10px;color:var(--muted)">${it.stage||''}${it.subStage?' · '+it.subStage:''}</div></td>
+        <td class="td-right" style="border-bottom:1px solid var(--border)">${fmt$(it.arr)}</td>
+        <td style="border-bottom:1px solid var(--border)">${it.obPoc||'—'}</td>
+        <td style="border-bottom:1px solid var(--border)">${cleanTreeTxt(it.blockedReason)||'—'}</td>
+        <td style="border-bottom:1px solid var(--border);max-width:240px;white-space:normal;color:var(--muted)">${cleanTreeTxt(it.blockedRemarks)||'—'}</td>
+        <td class="td-muted" style="border-bottom:1px solid var(--border)">${dt(it.projectionDate)}</td>
+      </tr>`).join('');
+      return `<tr onclick="toggleTree('${id}',this)" style="cursor:pointer">
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600"><span class="tree-caret" style="display:inline-block;width:14px;color:var(--muted)">▸</span>${e} <span style="font-weight:500;color:var(--muted);font-size:12px">(${items.length})</span></td>
+        <td class="td-right" style="border-bottom:1px solid var(--border);font-weight:700">${fmt$(eArr)}</td>
+        <td style="border-bottom:1px solid var(--border)">${uniqJoin(items.map(r=>r.obPoc))}</td>
+        <td style="border-bottom:1px solid var(--border)">${uniqJoin(items.map(r=>r.blockedReason))}</td>
+        <td style="border-bottom:1px solid var(--border);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">${uniqJoin(items.map(r=>r.blockedRemarks))}</td>
+        <td></td>
+      </tr>${childRows}`;
+    }).join('');
+    return `<tr><td colspan="6" style="background:var(--bg);padding:9px 12px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">${mLabel(k)} <span style="color:var(--blue)">· ${fmt$(mrows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${entKeys.length} ent · ${mrows.length} rooftops</span></td></tr>${entRows}`;
+  }).join('');
+
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:#F8FAFC">
+      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Account / Rooftop</th>
+      <th style="text-align:right;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">ARR</th>
+      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">OB POC</th>
+      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Blocked Owner</th>
+      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Blocked Reason</th>
+      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Proj Live</th>
+    </tr></thead>
+    <tbody>${sections}</tbody>
+  </table>`;
+}
+
 function renderStudio(filtered) {
   const liveRows = filtered.filter(liveThisMonth);
   const expRows = filtered.filter(expThisMonth);
@@ -2004,7 +2034,7 @@ function renderStudio(filtered) {
   renderStageDonut(filtered, 'st-stage-donut', 'st-stage-donut');
   renderMonthlyLine(filtered, 'st-monthly-line', 'st-monthly-line');
   renderArrByPoc(filtered, 'st-arr-poc-bar', 'st-arr-poc-bar');
-  renderStTable(filtered);
+  renderAccountTree('st-tree', filtered, false);
 }
 
 function renderStageDonut(rows, canvasId, chartKey) {
@@ -2152,7 +2182,7 @@ function renderVini(filtered) {
   renderStageDonut(filtered, 'vi-stage-donut', 'vi-stage-donut');
   renderSubStageBar(filtered);
   renderMonthlyLine(filtered, 'vi-monthly-line', 'vi-monthly-line');
-  renderViTable(filtered);
+  renderAccountTree('vi-tree', filtered, true);
 }
 
 function renderSubStageBar(rows) {
