@@ -40,8 +40,8 @@ a:hover { text-decoration:underline; }
 .sync-banner a { color:inherit; font-weight:600; }
 
 /* Tabs */
-.tabs { display:flex; align-items:center; padding:0 24px; background:#fff; border-bottom:1px solid var(--border); gap:0; }
-.tab { padding:14px 20px; font-size:14px; font-weight:500; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; transition:all .15s; }
+.tabs { display:flex; align-items:center; padding:0 24px; background:#fff; border-bottom:1px solid var(--border); gap:0; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.tab { padding:14px 20px; font-size:14px; font-weight:500; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; transition:all .15s; white-space:nowrap; flex:0 0 auto; }
 .tab:hover { color:var(--text); }
 .tab.active { color:var(--blue); border-bottom-color:var(--blue); font-weight:600; }
 
@@ -199,6 +199,7 @@ const EMBEDDED_DATA = {
   <div class="tab" onclick="switchTab('analytics')">Analytics</div>
   <div class="tab" onclick="switchTab('email')">Email View</div>
   <div class="tab" onclick="switchTab('display')">Display</div>
+  <div class="tab" onclick="switchTab('slack')">Slack View</div>
 </div>
 
 <!-- Filter bars -->
@@ -490,6 +491,11 @@ const EMBEDDED_DATA = {
   <div id="display-board"></div>
 </div>
 
+<!-- Slack View Tab -->
+<div id="tab-slack" class="main">
+  <div id="slack-content" style="padding:16px 12px 24px"></div>
+</div>
+
 <!-- Setup Guide Modal -->
 <div class="modal-overlay" id="setup-modal" onclick="if(event.target===this)closeSetupGuide()">
   <div class="modal">
@@ -570,6 +576,9 @@ const FALLBACK_SYNC = EMBEDDED_DATA.syncedAt;
 // correct when the Product filter is Studio or Vini.
 const BASE_LARR_BY_PRODUCT = { vini: 1098016, studio: 6634079 };
 const BASE_LARR = BASE_LARR_BY_PRODUCT.vini + BASE_LARR_BY_PRODUCT.studio;  // 7,732,095 (All products)
+// Monthly targets (for the Slack View scorecard)
+const LARR_TARGET = 9700000;       // $9.7M total LARR target
+const NEW_LIVE_TARGET = 2000000;   // $2.0M new-live (went live this month) target
 const PIPELINE_TARGETS = { 'PWS': 500000, 'In-OB': 800000, 'New Sales': 700000 };
 // Fixed funnel ARR at start of month (Day 1 snapshot — does not change dynamically)
 const INOB_START_ARR = 1418750;   // In-OB funnel ARR at month start
@@ -895,7 +904,7 @@ function showErrorBanner(msg) {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab').forEach((el,i) => {
-    const tabs = ['overview','studio','vini','programs','analytics','email','display'];
+    const tabs = ['overview','studio','vini','programs','analytics','email','display','slack'];
     el.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.main').forEach(el => el.classList.remove('active'));
@@ -1022,6 +1031,8 @@ function renderAll() {
     renderEmailView(allRows);
   } else if (currentTab === 'display') {
     renderDisplay(allRows);
+  } else if (currentTab === 'slack') {
+    renderSlack(allRows);
   }
 }
 
@@ -1277,6 +1288,78 @@ function programSegment(label, color, segRows) {
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">${upsideTable}</div>
     </div>
   </div>`;
+}
+
+// ─── SLACK VIEW (compact mobile scorecard) ───────────────────
+function renderSlack(rows) {
+  const fmtC = n => { n=Math.round(n); const a=Math.abs(n); return a>=1e6 ? '$'+(n/1e6).toFixed(2)+'M' : a>=1e3 ? '$'+(n/1e3).toFixed(1)+'K' : '$'+n; };
+  const sum = a => a.reduce((s,r)=>s+r.arr,0);
+  const isStudio = r => r.source!=='vini', isVini = r => r.source==='vini';
+
+  const liveRows = rows.filter(liveThisMonth), expRows = rows.filter(expThisMonth), dropRows = rows.filter(droppedThisMonth);
+  const blockedRows = rows.filter(r => r.currentMonthConf === 'Upside');
+  const liveARR = sum(liveRows), expARR = sum(expRows);
+  const totalLARR = BASE_LARR + liveARR - sum(dropRows) - REVENUE_LOSS;
+  const meLARR = totalLARR + expARR;
+  const newLiveExp = liveARR + expARR;
+  const pct = (v,t) => t ? Math.round(v/t*100) : 0;
+  const pctColor = p => p>=90 ? '#16A34A' : p>=60 ? '#D97706' : '#DC2626';
+
+  const card = (label,val,accent,sub,subColor) => `<div style="flex:1;min-width:0;background:#fff;border:1px solid var(--border);border-left:4px solid ${accent};border-radius:10px;padding:11px 12px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${label}</div><div style="font-size:clamp(18px,5.5vw,24px);font-weight:800;color:var(--text);margin-top:3px;line-height:1.05">${val}</div>${sub?`<div style="font-size:12px;font-weight:700;margin-top:3px;color:${subColor||'var(--muted)'};white-space:nowrap">${sub}</div>`:''}</div>`;
+
+  const larrPct = pct(totalLARR, LARR_TARGET), nlPct = pct(liveARR, NEW_LIVE_TARGET);
+  const row3 = (a,b,c) => `<div style="display:flex;gap:8px">${a}${b}${c}</div>`;
+  const larrRow = row3(
+    card('Target', fmtC(LARR_TARGET), 'var(--muted)'),
+    card('Current', fmtC(totalLARR), 'var(--blue)', larrPct+'% to target', pctColor(larrPct)),
+    card('Exp. Month-End', fmtC(meLARR), 'var(--green)')
+  );
+  const nlRow = row3(
+    card('Target', fmtC(NEW_LIVE_TARGET), 'var(--muted)'),
+    card('Current', fmtC(liveARR), 'var(--blue)', nlPct+'% to target', pctColor(nlPct)),
+    card('Exp. Month-End', fmtC(newLiveExp), 'var(--green)')
+  );
+
+  // Blocked summary: Blocked Owner × Product
+  const ownerOf = r => { const o=(r.blockedReason||'').trim(); return /client/i.test(o)?'Client':/tech/i.test(o)?'Tech':'Unassigned'; };
+  const ownerColor = o => o==='Tech' ? '#2563EB' : o==='Client' ? '#DC2626' : '#94A3B8';
+  const cell = (o,prodFn) => { const w=blockedRows.filter(r=>ownerOf(r)===o&&prodFn(r)); return w.length ? `${fmtC(sum(w))} <span style="color:var(--faint);font-weight:500">(${w.length})</span>` : '<span style="color:var(--faint)">—</span>'; };
+  const present = ['Client','Tech','Unassigned'].filter(o => blockedRows.some(r=>ownerOf(r)===o));
+  const colTot = prodFn => { const w=blockedRows.filter(prodFn); return w.length ? fmtC(sum(w)) : '—'; };
+  const blkTable = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:#F8FAFC">
+      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Blocked Owner</th>
+      <th style="text-align:right;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Studio</th>
+      <th style="text-align:right;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Vini</th>
+      <th style="text-align:right;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Total</th>
+    </tr></thead>
+    <tbody>
+    ${present.map(o => `<tr>
+      <td style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:700;color:${ownerColor(o)}">${o}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:right">${cell(o,isStudio)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:right">${cell(o,isVini)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">${fmtC(sum(blockedRows.filter(r=>ownerOf(r)===o)))}</td>
+    </tr>`).join('')}
+      <tr style="background:#F8FAFC;font-weight:800"><td style="padding:8px 10px">Total</td><td style="padding:8px 10px;text-align:right">${colTot(isStudio)}</td><td style="padding:8px 10px;text-align:right">${colTot(isVini)}</td><td style="padding:8px 10px;text-align:right">${fmtC(sum(blockedRows))}</td></tr>
+    </tbody></table>`;
+
+  const heading = TODAY.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  const secTitle = t => `<div style="font-size:13px;font-weight:800;color:var(--text);margin:16px 2px 8px;text-transform:uppercase;letter-spacing:.4px">${t}</div>`;
+  document.getElementById('slack-content').innerHTML = `
+    <div id="slack-card" style="max-width:460px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden">
+      <div style="background:#0F2350;color:#fff;padding:16px 18px;text-align:center">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;opacity:.65;text-transform:uppercase">Spyne · Onboarding</div>
+        <div style="font-size:22px;font-weight:800;margin-top:4px">OB Snapshot — ${heading}</div>
+      </div>
+      <div style="padding:6px 14px 16px">
+        ${secTitle('LARR')}
+        ${larrRow}
+        ${secTitle('New Live · this month')}
+        ${nlRow}
+        ${secTitle('Blocked Summary')}
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">${blkTable}</div>
+      </div>
+    </div>`;
 }
 
 // ─── DISPLAY (TV war-room board) ─────────────────────────────
@@ -2312,7 +2395,7 @@ function copyAppsScript() {
 window.addEventListener('DOMContentLoaded', () => {
   // Deep-link: e.g. ...vercel.app/#email opens the Email View directly (used by the daily screenshot bot)
   const tab = (location.hash || '').replace('#', '');
-  if (['overview','studio','vini','programs','analytics','email'].includes(tab)) switchTab(tab);
+  if (['overview','studio','vini','programs','analytics','email','display','slack'].includes(tab)) switchTab(tab);
   loadAllData();
   // Auto-refresh every 4 hours
   setInterval(loadAllData, 4 * 60 * 60 * 1000);
