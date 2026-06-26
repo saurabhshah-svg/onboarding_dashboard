@@ -1299,9 +1299,10 @@ function renderSlack(rows) {
   const liveRows = rows.filter(liveThisMonth), expRows = rows.filter(expThisMonth), dropRows = rows.filter(droppedThisMonth);
   const blockedRows = rows.filter(r => r.currentMonthConf === 'Upside');
   const liveARR = sum(liveRows), expARR = sum(expRows);
+  const expConf = sum(expRows.filter(r => r.currentMonthConf === 'Confirmed'));  // confirmed-to-go-live only
   const totalLARR = BASE_LARR + liveARR - sum(dropRows) - REVENUE_LOSS;
-  const meLARR = totalLARR + expARR;
-  const newLiveExp = liveARR + expARR;
+  const meLARR = totalLARR + expConf;       // Exp. Month-End = already live + confirmed
+  const newLiveExp = liveARR + expConf;     // already live this month + confirmed
   const pct = (v,t) => t ? Math.round(v/t*100) : 0;
   const pctColor = p => p>=90 ? '#16A34A' : p>=60 ? '#D97706' : '#DC2626';
 
