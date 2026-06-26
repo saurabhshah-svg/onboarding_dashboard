@@ -1311,7 +1311,7 @@ function renderSlack(rows) {
   const row3 = (a,b,c) => `<div style="display:flex;gap:8px">${a}${b}${c}</div>`;
   const larrRow = row3(
     card('Target', fmtC(LARR_TARGET), 'var(--muted)'),
-    card('Current', fmtC(totalLARR), 'var(--blue)', larrPct+'% to target', pctColor(larrPct)),
+    card('Current', fmtC(totalLARR), 'var(--blue)'),
     card('Exp. Month-End', fmtC(meLARR), 'var(--green)')
   );
   const nlRow = row3(
