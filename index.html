@@ -152,6 +152,10 @@ tr:hover td { background:#F8FAFC; }
 #tab-display { padding: 0 !important; }
 #display-board { height: calc(100vh - 150px); display:flex; flex-direction:column; gap:10px; padding:10px 14px; box-sizing:border-box; overflow:hidden; background:var(--bg); }
 #display-board:fullscreen { height:100vh !important; padding:16px 22px; overflow:hidden; }
+/* ── Account tree: stacked sticky headers (column → month → confirmation) ── */
+.acct-tree thead th { position:sticky; top:0; z-index:4; background:#F8FAFC; }
+.acct-tree .tree-month { position:sticky; top:var(--h1,30px); z-index:3; }
+.acct-tree .tree-conf { position:sticky; top:calc(var(--h1,30px) + var(--h2,40px)); z-index:2; }
 .disp-card { background:var(--card); border-radius:10px; box-shadow:var(--shadow); border-left:4px solid var(--blue); padding:10px 14px; display:flex; flex-direction:column; justify-content:center; }
 .disp-kpi-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); }
 .disp-kpi-val { font-size:clamp(20px,2.4vw,34px); font-weight:800; color:var(--text); line-height:1.05; margin-top:2px; }
@@ -2008,14 +2012,14 @@ function renderAccountTree(containerId, rows, showAgent) {
 
   const sections = keys.map(k => {
     const mrows = months[k];
-    const monthHdr = `<tr><td colspan="6" style="background:var(--bg);padding:9px 12px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border);position:sticky;top:0;z-index:1">${mLabel(k)} <span style="color:var(--blue)">· ${fmt$(mrows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} rooftops</span></td></tr>`;
+    const monthHdr = `<tr><td colspan="6" style="background:var(--bg);padding:9px 12px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border);position:sticky;top:0;height:20px;z-index:6">${mLabel(k)} <span style="color:var(--blue)">· ${fmt$(mrows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} rooftops</span></td></tr>`;
     const byConf = { Confirmed:[], Upside:[], Unconfirmed:[] };
     mrows.forEach(r => byConf[confOf(r)].push(r));
     const ownerColor = o => /tech/i.test(o) ? '#2563EB' : /client/i.test(o) ? '#DC2626' : '#94A3B8';
     const confBlocks = ['Confirmed','Upside','Unconfirmed'].filter(c => byConf[c].length).map(c => {
       const crows = byConf[c];
       const nEnt = new Set(crows.map(r=>r.entityName||r.rooftopName||'—')).size;
-      const hdr = `<tr><td colspan="6" style="padding:6px 12px 6px 18px;font-weight:700;color:${confColor[c]};background:#fff;border-bottom:1px solid var(--border);border-left:4px solid ${confColor[c]}">${c} <span style="font-weight:600">· ${fmt$(crows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:500;font-size:12px">· ${nEnt} ent · ${crows.length} rooftops</span></td></tr>`;
+      const hdr = `<tr><td colspan="6" style="padding:6px 12px 6px 18px;font-weight:700;color:${confColor[c]};background:#fff;border-bottom:1px solid var(--border);border-left:4px solid ${confColor[c]};position:sticky;top:36px;z-index:5">${c} <span style="font-weight:600">· ${fmt$(crows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:500;font-size:12px">· ${nEnt} ent · ${crows.length} rooftops</span></td></tr>`;
       if (c !== 'Upside') return hdr + buildEnts(crows);
       // Upside → bifurcate by Blocked Owner (Client / Tech / Unassigned)
       const byOwner = {};
@@ -2024,7 +2028,7 @@ function renderAccountTree(containerId, rows, showAgent) {
       const ownerBlocks = ownerKeys.map(o => {
         const orows = byOwner[o];
         const oEnt = new Set(orows.map(r=>r.entityName||r.rooftopName||'—')).size;
-        const oh = `<tr><td colspan="6" style="padding:5px 12px 5px 30px;font-weight:600;font-size:12.5px;color:${ownerColor(o)};background:#fff;border-bottom:1px dashed var(--border)">⛔ ${o} <span style="color:var(--muted);font-weight:500">· ${fmt$(orows.reduce((s,r)=>s+r.arr,0))} · ${oEnt} ent · ${orows.length} rooftops</span></td></tr>`;
+        const oh = `<tr><td colspan="6" style="padding:5px 12px 5px 30px;font-weight:600;font-size:12.5px;color:${ownerColor(o)};background:#fff;border-bottom:1px dashed var(--border);position:sticky;top:65px;z-index:4">⛔ ${o} <span style="color:var(--muted);font-weight:500">· ${fmt$(orows.reduce((s,r)=>s+r.arr,0))} · ${oEnt} ent · ${orows.length} rooftops</span></td></tr>`;
         return oh + buildEnts(orows);
       }).join('');
       return hdr + ownerBlocks;
