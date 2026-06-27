@@ -20,7 +20,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Screenshot report and post to Slack
         env:
-          REPORT_URL: https://spyne-onboarding-dashboard.vercel.app/#email
+          REPORT_URL: https://spyne-onboarding-dashboard.vercel.app/#slack
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
         run: node .github/scripts/daily-report.js

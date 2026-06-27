@@ -14,11 +14,11 @@ async function capture() {
   // Make sure we're on the Email View and the live data has rendered
   // Wait until live data has loaded and the report card is rendered
   await page.waitForFunction(
-    () => typeof allRows !== 'undefined' && allRows.length > 0 && !!document.querySelector('#email-card'),
+    () => typeof allRows !== 'undefined' && allRows.length > 0 && !!document.querySelector('#slack-card'),
     { timeout: 90000 }
   );
   await page.waitForTimeout(2500); // let fonts/layout settle
-  const el = await page.$('#email-card');
+  const el = await page.$('#slack-card');
   const buf = await el.screenshot();
   await browser.close();
   return buf;
