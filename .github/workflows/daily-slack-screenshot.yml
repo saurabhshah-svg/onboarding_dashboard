@@ -1,9 +1,10 @@
 name: Daily OB Report → Slack
 
 on:
-  schedule:
-    - cron: '30 3 * * *'      # 03:30 UTC = 09:00 IST (GitHub cron may run a few min late)
-  workflow_dispatch: {}        # lets you run it manually from the Actions tab
+  # Triggered daily at 09:00 IST by an external scheduler (cron-job.org) that calls
+  # the workflow_dispatch REST API. GitHub's native cron was unreliable (ran ~8h late),
+  # so it's removed. Also runnable manually from the Actions tab.
+  workflow_dispatch: {}
 
 jobs:
   report:
