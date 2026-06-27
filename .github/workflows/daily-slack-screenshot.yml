@@ -14,9 +14,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install deps (Playwright + nodemailer)
+      - name: Install Playwright (Chromium)
         run: |
-          npm install playwright@1 nodemailer
+          npm install playwright@1
           npx playwright install --with-deps chromium
       - name: Screenshot Slack View → post to Slack
         env:
@@ -24,13 +24,11 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
         run: node .github/scripts/daily-report.js
-      - name: Screenshot Email View → email it
+      - name: Screenshot Email View → email it (via Apps Script)
         if: ${{ always() }}   # send even if the Slack step failed
         env:
           EMAIL_REPORT_URL: https://spyne-onboarding-dashboard.vercel.app/#email
           EMAIL_TO: reports@spyne.ai
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          APPS_SCRIPT_URL: https://script.google.com/macros/s/AKfycbykaELvGyPvTzPKYwYrYuElWK4pepevjmSS0LOGgQeGLjLaYdNM7IIuZC1WurW3ctyiLQ/exec
+          MAIL_SECRET: ${{ secrets.MAIL_SECRET }}
         run: node .github/scripts/email-report.js

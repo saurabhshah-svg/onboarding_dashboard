@@ -12,6 +12,10 @@ const GID_MAP = { vini: 2053683245, amer: 1134407178, apac: 764039413 };
 const CHURN_SPREADSHEET_ID = '1H5cBuWmLD_roF_LV3foWII37PHbTqqNdzCcVGeAGU8A';
 const CHURN_GID = 1421999984;
 
+// Shared secret for the daily-email endpoint (doPost). Set this to the SAME value
+// you store as the GitHub Action secret MAIL_SECRET. Leave blank to disable emailing.
+const MAIL_SECRET = '';   // e.g. obmail-xxxxxxxx-xxxx-...
+
 function doGet(e) {
   try {
     const sheet = (e.parameter.sheet || 'vini').toLowerCase();
@@ -32,6 +36,25 @@ function doGet(e) {
 
     return ContentService.createTextOutput(JSON.stringify({ csv, syncedAt: new Date().toISOString() }))
       .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return respond({ error: err.toString() });
+  }
+}
+
+// Daily email endpoint — the GitHub Action POSTs the Email-View screenshot here,
+// and this emails it (inline + attached) from your Google account via GmailApp.
+function doPost(e) {
+  try {
+    const b = JSON.parse(e.postData.contents);
+    if (!MAIL_SECRET || b.secret !== MAIL_SECRET) return respond({ error: 'unauthorized' });
+    const blob = Utilities.newBlob(Utilities.base64Decode(b.png), 'image/png', b.filename || 'ob-report.png');
+    GmailApp.sendEmail(b.to || 'reports@spyne.ai', b.subject || 'OB Report', b.text || 'OB Report (see attached).', {
+      htmlBody: b.html || '',
+      attachments: [blob],
+      inlineImages: { obreport: blob },
+      name: 'Spyne OB Reports'
+    });
+    return respond({ ok: true });
   } catch (err) {
     return respond({ error: err.toString() });
   }
