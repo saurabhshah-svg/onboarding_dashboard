@@ -60,6 +60,11 @@ function doPost(e) {
   }
 }
 
+// Run this ONCE from the editor to grant the Gmail permission and confirm sending works.
+function sendTestEmail() {
+  GmailApp.sendEmail('reports@spyne.ai', 'OB Report — test', 'Test email from the OB Apps Script. If you see this, sending works.');
+}
+
 function respond(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
