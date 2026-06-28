@@ -329,25 +329,10 @@ const EMBEDDED_DATA = {
     <div class="chart-wrap-tall"><canvas id="dod-chart"></canvas></div>
   </div>
 
-  <!-- POC Table -->
+  <!-- POC-Level Pendency Overview -->
   <div class="section">
-    <div class="section-title">POC Summary</div>
-    <div class="table-wrap">
-      <table id="poc-table">
-        <thead>
-          <tr>
-            <th onclick="sortPocTable(0)">POC ↕</th>
-            <th onclick="sortPocTable(1)">Product ↕</th>
-            <th class="td-right" onclick="sortPocTable(2)">Total ↕</th>
-            <th class="td-right" onclick="sortPocTable(3)">In-OB ↕</th>
-            <th class="td-right" onclick="sortPocTable(4)">Live This Mo ↕</th>
-            <th class="td-right" onclick="sortPocTable(5)">Dropped ↕</th>
-            <th class="td-right" onclick="sortPocTable(6)">Avg TAT ↕</th>
-          </tr>
-        </thead>
-        <tbody id="poc-tbody"></tbody>
-      </table>
-    </div>
+    <div class="section-title">POC-Level Pendency Overview <span style="font-weight:500;color:var(--muted);font-size:12px">— in-OB ARR rolled up by Product → Projection Month → Confirmed/Upside → POC</span></div>
+    <div id="poc-pendency" style="max-height:70vh;overflow:auto"></div>
   </div>
 </div>
 
@@ -1766,7 +1751,7 @@ function renderOverview(filtered) {
   renderPipelineTable(filtered);
   renderDoDChart(filtered);
   renderBlockedCharts(filtered);
-  renderPocTable(filtered);
+  renderPocPendency(filtered);
 }
 
 function renderPipelineTable(filtered) {
@@ -1992,6 +1977,61 @@ function renderBlockedCharts(filtered) {
 
   makeHBar('blocked-studio-chart', countBlocked(filtered.filter(r=>r.source!=='vini')), 'blocked-studio');
   makeHBar('blocked-vini-chart', countBlocked(filtered.filter(r=>r.source==='vini')), 'blocked-vini');
+}
+
+// POC-Level Pendency Overview: in-OB ARR rolled up Product → Projection Month → Confirmed/Upside → POC
+function renderPocPendency(filtered) {
+  const el = document.getElementById('poc-pendency');
+  if (!el) return;
+  const inF = filtered.filter(isInFunnel);
+  if (!inF.length) { el.innerHTML = '<div class="empty-state">No pending (in-OB) accounts</div>'; return; }
+
+  const sumA = a => a.reduce((s, r) => s + r.arr, 0);
+  const mKey = r => r.projectionDate ? (r.projectionDate.getFullYear() + '-' + String(r.projectionDate.getMonth()+1).padStart(2,'0')) : 'none';
+  const mLabel = k => { if (k === 'none') return 'No Projection Date'; const [y,m] = k.split('-'); return new Date(+y, +m-1, 1).toLocaleString('en-US', { month:'long', year:'numeric' }); };
+  const confOf = r => r.currentMonthConf === 'Confirmed' ? 'Confirmed' : r.currentMonthConf === 'Upside' ? 'Upside' : 'Unconfirmed';
+  const confColor = { Confirmed:'#16A34A', Upside:'#D97706', Unconfirmed:'#64748B' };
+
+  const products = [
+    { label:'Studio', color:'#1e40af', rows: inF.filter(r => r.source !== 'vini') },
+    { label:'Vini',   color:'#065f46', rows: inF.filter(r => r.source === 'vini') }
+  ];
+
+  const sections = products.filter(p => p.rows.length).map(p => {
+    const months = {};
+    p.rows.forEach(r => { const k = mKey(r); (months[k] = months[k] || []).push(r); });
+    const mKeys = Object.keys(months).sort((a,b) => a==='none'?1 : b==='none'?-1 : a.localeCompare(b));
+    const monthBlocks = mKeys.map(mk => {
+      const mrows = months[mk];
+      const byConf = { Confirmed:[], Upside:[], Unconfirmed:[] };
+      mrows.forEach(r => byConf[confOf(r)].push(r));
+      const confBlocks = ['Confirmed','Upside','Unconfirmed'].filter(c => byConf[c].length).map(c => {
+        const crows = byConf[c];
+        const pocs = {};
+        crows.forEach(r => { const poc = (r.obPoc||'').trim() || 'Unassigned'; const g = pocs[poc] || (pocs[poc] = { poc, n:0, arr:0 }); g.n++; g.arr += r.arr; });
+        const pocRows = Object.values(pocs).sort((a,b) => b.arr - a.arr).map(pc => `<tr>
+          <td style="padding:5px 10px 5px 54px;border-bottom:1px solid var(--border)">${pc.poc}</td>
+          <td style="padding:5px 10px;border-bottom:1px solid var(--border);text-align:right;color:var(--muted)">${pc.n}</td>
+          <td style="padding:5px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:600">${fmt$(pc.arr)}</td>
+        </tr>`).join('');
+        const ch = `<tr><td colspan="3" style="padding:5px 10px 5px 36px;font-weight:700;color:${confColor[c]};background:#fff;border-bottom:1px solid var(--border)">${c} <span style="color:var(--muted);font-weight:500;font-size:12px">· ${fmt$(sumA(crows))} · ${crows.length} accts</span></td></tr>`;
+        return ch + pocRows;
+      }).join('');
+      const mh = `<tr><td colspan="3" style="padding:6px 10px 6px 20px;font-weight:800;color:var(--text);background:#F1F5F9;border-bottom:1px solid var(--border)">${mLabel(mk)} <span style="color:var(--blue);font-weight:700">· ${fmt$(sumA(mrows))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} accts</span></td></tr>`;
+      return mh + confBlocks;
+    }).join('');
+    const ph = `<tr><td colspan="3" style="padding:8px 12px;font-weight:800;color:#fff;background:${p.color}">${p.label} <span style="font-weight:600;opacity:.92">· ${fmt$(sumA(p.rows))} pending · ${p.rows.length} accts</span></td></tr>`;
+    return ph + monthBlocks;
+  }).join('');
+
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:#F8FAFC">
+      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">OB POC</th>
+      <th style="text-align:right;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Accts</th>
+      <th style="text-align:right;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Pending ARR</th>
+    </tr></thead>
+    <tbody>${sections}</tbody>
+  </table>`;
 }
 
 let pocTableData = [];
