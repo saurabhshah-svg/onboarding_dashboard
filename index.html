@@ -331,7 +331,7 @@ const EMBEDDED_DATA = {
 
   <!-- POC-Level Pendency Overview -->
   <div class="section">
-    <div class="section-title">POC-Level Pendency Overview <span style="font-weight:500;color:var(--muted);font-size:12px">— in-OB ARR rolled up by Product → Projection Month → Confirmed/Upside → POC</span></div>
+    <div class="section-title">POC-Level Pendency Overview <span style="font-weight:500;color:var(--muted);font-size:12px">— in-OB ARR rolled up by POC → Studio/Vini → Projection Month → Confirmed/Upside</span></div>
     <div id="poc-pendency" style="max-height:70vh;overflow:auto"></div>
   </div>
 </div>
@@ -1979,7 +1979,7 @@ function renderBlockedCharts(filtered) {
   makeHBar('blocked-vini-chart', countBlocked(filtered.filter(r=>r.source==='vini')), 'blocked-vini');
 }
 
-// POC-Level Pendency Overview: in-OB ARR rolled up Product → Projection Month → Confirmed/Upside → POC
+// POC-Level Pendency Overview: in-OB ARR rolled up POC → Studio/Vini → Projection Month → Confirmed/Upside
 function renderPocPendency(filtered) {
   const el = document.getElementById('poc-pendency');
   if (!el) return;
@@ -1992,41 +1992,46 @@ function renderPocPendency(filtered) {
   const confOf = r => r.currentMonthConf === 'Confirmed' ? 'Confirmed' : r.currentMonthConf === 'Upside' ? 'Upside' : 'Unconfirmed';
   const confColor = { Confirmed:'#16A34A', Upside:'#D97706', Unconfirmed:'#64748B' };
 
-  const products = [
-    { label:'Studio', color:'#1e40af', rows: inF.filter(r => r.source !== 'vini') },
-    { label:'Vini',   color:'#065f46', rows: inF.filter(r => r.source === 'vini') }
-  ];
+  // Top level: POC (sorted by total pending ARR)
+  const pocs = {};
+  inF.forEach(r => { const p = (r.obPoc||'').trim() || 'Unassigned'; (pocs[p] = pocs[p] || []).push(r); });
+  const pocKeys = Object.keys(pocs).sort((a,b) => sumA(pocs[b]) - sumA(pocs[a]));
 
-  const sections = products.filter(p => p.rows.length).map(p => {
-    const months = {};
-    p.rows.forEach(r => { const k = mKey(r); (months[k] = months[k] || []).push(r); });
-    const mKeys = Object.keys(months).sort((a,b) => a==='none'?1 : b==='none'?-1 : a.localeCompare(b));
-    const monthBlocks = mKeys.map(mk => {
-      const mrows = months[mk];
-      const byConf = { Confirmed:[], Upside:[], Unconfirmed:[] };
-      mrows.forEach(r => byConf[confOf(r)].push(r));
-      const confBlocks = ['Confirmed','Upside','Unconfirmed'].filter(c => byConf[c].length).map(c => {
-        const crows = byConf[c];
-        const pocs = {};
-        crows.forEach(r => { const poc = (r.obPoc||'').trim() || 'Unassigned'; const g = pocs[poc] || (pocs[poc] = { poc, n:0, arr:0 }); g.n++; g.arr += r.arr; });
-        const pocRows = Object.values(pocs).sort((a,b) => b.arr - a.arr).map(pc => `<tr>
-          <td style="padding:5px 10px 5px 54px;border-bottom:1px solid var(--border)">${pc.poc}</td>
-          <td style="padding:5px 10px;border-bottom:1px solid var(--border);text-align:right;color:var(--muted)">${pc.n}</td>
-          <td style="padding:5px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:600">${fmt$(pc.arr)}</td>
-        </tr>`).join('');
-        const ch = `<tr><td colspan="3" style="padding:5px 10px 5px 36px;font-weight:700;color:${confColor[c]};background:#fff;border-bottom:1px solid var(--border)">${c} <span style="color:var(--muted);font-weight:500;font-size:12px">· ${fmt$(sumA(crows))} · ${crows.length} accts</span></td></tr>`;
-        return ch + pocRows;
+  const sections = pocKeys.map(pk => {
+    const prows = pocs[pk];
+    const products = [
+      { label:'Studio', color:'#1e40af', rows: prows.filter(r => r.source !== 'vini') },
+      { label:'Vini',   color:'#065f46', rows: prows.filter(r => r.source === 'vini') }
+    ];
+    const prodBlocks = products.filter(p => p.rows.length).map(p => {
+      const months = {};
+      p.rows.forEach(r => { const k = mKey(r); (months[k] = months[k] || []).push(r); });
+      const mKeys = Object.keys(months).sort((a,b) => a==='none'?1 : b==='none'?-1 : a.localeCompare(b));
+      const mBlocks = mKeys.map(mk => {
+        const mrows = months[mk];
+        const byConf = { Confirmed:[], Upside:[], Unconfirmed:[] };
+        mrows.forEach(r => byConf[confOf(r)].push(r));
+        const confRows = ['Confirmed','Upside','Unconfirmed'].filter(c => byConf[c].length).map(c => {
+          const cr = byConf[c];
+          return `<tr>
+            <td style="padding:5px 10px 5px 64px;border-bottom:1px solid var(--border);color:${confColor[c]};font-weight:600">${c}</td>
+            <td style="padding:5px 10px;border-bottom:1px solid var(--border);text-align:right;color:var(--muted)">${cr.length}</td>
+            <td style="padding:5px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:600">${fmt$(sumA(cr))}</td>
+          </tr>`;
+        }).join('');
+        const mh = `<tr><td colspan="3" style="padding:5px 10px 5px 46px;font-weight:700;color:var(--text);background:#F1F5F9;border-bottom:1px solid var(--border)">${mLabel(mk)} <span style="color:var(--muted);font-weight:500;font-size:12px">· ${fmt$(sumA(mrows))} · ${mrows.length} accts</span></td></tr>`;
+        return mh + confRows;
       }).join('');
-      const mh = `<tr><td colspan="3" style="padding:6px 10px 6px 20px;font-weight:800;color:var(--text);background:#F1F5F9;border-bottom:1px solid var(--border)">${mLabel(mk)} <span style="color:var(--blue);font-weight:700">· ${fmt$(sumA(mrows))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} accts</span></td></tr>`;
-      return mh + confBlocks;
+      const prodHdr = `<tr><td colspan="3" style="padding:6px 10px 6px 28px;font-weight:700;color:${p.color};background:#fff;border-bottom:1px solid var(--border);border-left:4px solid ${p.color}">${p.label} <span style="color:var(--muted);font-weight:500;font-size:12px">· ${fmt$(sumA(p.rows))} · ${p.rows.length} accts</span></td></tr>`;
+      return prodHdr + mBlocks;
     }).join('');
-    const ph = `<tr><td colspan="3" style="padding:8px 12px;font-weight:800;color:#fff;background:${p.color}">${p.label} <span style="font-weight:600;opacity:.92">· ${fmt$(sumA(p.rows))} pending · ${p.rows.length} accts</span></td></tr>`;
-    return ph + monthBlocks;
+    const pocHdr = `<tr><td colspan="3" style="padding:8px 12px;font-weight:800;color:#fff;background:#0F2350">${pk} <span style="font-weight:600;opacity:.9">· ${fmt$(sumA(prows))} pending · ${prows.length} accts</span></td></tr>`;
+    return pocHdr + prodBlocks;
   }).join('');
 
   el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="background:#F8FAFC">
-      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">OB POC</th>
+      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">POC · Product · Month · Status</th>
       <th style="text-align:right;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Accts</th>
       <th style="text-align:right;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Pending ARR</th>
     </tr></thead>
