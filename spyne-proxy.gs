@@ -12,6 +12,10 @@ const GID_MAP = { vini: 2053683245, amer: 1134407178, apac: 764039413 };
 const CHURN_SPREADSHEET_ID = '1H5cBuWmLD_roF_LV3foWII37PHbTqqNdzCcVGeAGU8A';
 const CHURN_GID = 1421999984;
 
+// AE / AE-Manager mapping by Enterprise ID (separate spreadsheet)
+const AE_SPREADSHEET_ID = '131ItK3zb2cb6ZJNP1JZ5fIbgL7DRbCFeAaZCxnaRIjI';
+const AE_GID = 0;
+
 // Shared secret for the daily-email endpoint (doPost). Set this to the SAME value
 // you store as the GitHub Action secret MAIL_SECRET. Leave blank to disable emailing.
 const MAIL_SECRET = '';   // e.g. obmail-xxxxxxxx-xxxx-...
@@ -21,8 +25,9 @@ function doGet(e) {
     const sheet = (e.parameter.sheet || 'vini').toLowerCase();
     let ssId, gid, useDisplay = false;
     if (sheet === 'churn') { ssId = CHURN_SPREADSHEET_ID; gid = CHURN_GID; useDisplay = true; }
+    else if (sheet === 'aemap') { ssId = AE_SPREADSHEET_ID; gid = AE_GID; useDisplay = true; }
     else { ssId = SPREADSHEET_ID; gid = GID_MAP[sheet]; }
-    if (!gid) return respond({ error: 'Unknown sheet: ' + sheet });
+    if (gid === undefined || gid === null) return respond({ error: 'Unknown sheet: ' + sheet });
 
     const ss = SpreadsheetApp.openById(ssId);
     const target = ss.getSheets().find(s => s.getSheetId() === gid);

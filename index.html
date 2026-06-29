@@ -554,7 +554,7 @@ function respond(obj) {
 // ╔══════════════════════════════════════════════════════════╗
 // ║  CONFIGURATION — Paste your Apps Script URL below       ║
 // ╚══════════════════════════════════════════════════════════╝
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbykaELvGyPvTzPKYwYrYuElWK4pepevjmSS0LOGgQeGLjLaYdNM7IIuZC1WurW3ctyiLQ/exec'; // ← Live Apps Script web app
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzg3iR4fBWYjpwfG_68CDueg5RjqEZjQSNrUmqtEjfZl9Pe7Ai_7a5nqzG7mdyHzsWWdA/exec'; // ← Live Apps Script web app
 
 const FALLBACK_SYNC = EMBEDDED_DATA.syncedAt;
 // Base ARR at end of last month (May'26), split by product so the LARR card is
@@ -746,12 +746,42 @@ function normSource(v) {
   return s; // return as-is for any other value
 }
 
+// AE / AE-Manager mapping keyed by Enterprise ID (from the ?sheet=aemap proxy route).
+let aeMap = {};  // { '<entId lowercased>': { ae: 'Name', aeManager: 'Name' } }
+function parseAeMap(rows) {
+  const m = {};
+  if (!rows || !rows.length) return m;
+  // header row = first row containing 'enterprise id'
+  let hi = 0;
+  for (let i = 0; i < Math.min(6, rows.length); i++) {
+    if (rows[i].join('|').toLowerCase().includes('enterprise id')) { hi = i; break; }
+  }
+  const cm = buildColMap(rows[hi]);
+  rows.slice(hi + 1).forEach(r => {
+    const id = getCol(r, cm, 'enterprise id').trim().toLowerCase();
+    if (!id) return;
+    m[id] = {
+      ae:        getCol(r, cm, 'ae name', 'ae', 'account executive'),
+      aeManager: getCol(r, cm, 'ae manager', 'manager')
+    };
+  });
+  return m;
+}
+function attachAE(rows) {
+  rows.forEach(r => {
+    const hit = r.entId ? aeMap[r.entId.trim().toLowerCase()] : null;
+    r.ae        = hit ? hit.ae : '';
+    r.aeManager = hit ? hit.aeManager : '';
+  });
+}
+
 function parseVini(rows) {
   const hi = findHeaderRow(rows);
   const cm = buildColMap(rows[hi]);
   return rows.slice(hi+1).filter(r => r.length > 3 && r[0]).map(r => ({
     entityName:  getCol(r,cm,'account name'),
     rooftopName: getCol(r,cm,'rooftop name'),
+    entId:       getCol(r,cm,'enterprise id'),
     arr:         parseARR(getCol(r,cm,'arr ($)')),
     obPoc:       getCol(r,cm,'ob poc'),
     stage:       getCol(r,cm,'stage'),
@@ -784,6 +814,7 @@ function parseAmer(rows) {
   return rows.slice(hi+1).filter(r => r.length > 3 && r[0]).map(r => ({
     entityName:  getCol(r,cm,'ent name'),
     rooftopName: getCol(r,cm,'rooftop name'),
+    entId:       getCol(r,cm,'enterprise id'),
     arr:         parseARR(getCol(r,cm,'arr ($)')),
     obPoc:       getCol(r,cm,'ob poc'),
     stage:       getCol(r,cm,'stage'),
@@ -819,6 +850,7 @@ function parseApacEmea(rows) {
     return {
       entityName:  getCol(r,cm,'ent name'),
       rooftopName: getCol(r,cm,'rooftop name'),
+      entId:       getCol(r,cm,'enterprise id'),
       arr:         parseARR(getCol(r,cm,'arr ($)')),
       obPoc:       getCol(r,cm,'ob poc'),
       stage:       getCol(r,cm,'stage'),
@@ -964,17 +996,19 @@ async function loadAllData() {
 
     if (APPS_SCRIPT_URL && APPS_SCRIPT_URL.trim() !== '') {
       showLoadingBanner('⟳ Fetching live data from Google Sheets...');
-      const [v, a, p, c] = await Promise.all([
+      const [v, a, p, c, ae] = await Promise.all([
         fetchLiveSheet('vini'),
         fetchLiveSheet('amer'),
         fetchLiveSheet('apac'),
-        fetchLiveSheet('churn').catch(err => { console.warn('Churn fetch failed, using fallback REVENUE_LOSS:', err); return null; })
+        fetchLiveSheet('churn').catch(err => { console.warn('Churn fetch failed, using fallback REVENUE_LOSS:', err); return null; }),
+        fetchLiveSheet('aemap').catch(err => { console.warn('AE map fetch failed, AE column will be blank:', err); return null; })
       ]);
       viniCSV = v.csv; amerCSV = a.csv; apacCSV = p.csv;
       if (c && c.csv) {
         const rl = computeRevenueLoss(c.csv);
         if (rl) { REVENUE_LOSS_BY_PRODUCT = { vini: rl.vini, studio: rl.studio }; REVENUE_LOSS = rl.total; }
       }
+      if (ae && ae.csv) aeMap = parseAeMap(ae.csv);
       syncedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
       showSyncBanner('🟢 Live data · Last synced: ' + syncedAt, 'live');
     } else {
@@ -988,6 +1022,7 @@ async function loadAllData() {
     viniRows = parseVini(viniCSV);
     studioRows = [...parseAmer(amerCSV), ...parseApacEmea(apacCSV)];
     allRows = [...viniRows, ...studioRows];
+    attachAE(allRows);   // join AE / AE-Manager by Enterprise ID
 
     populateFilterDropdowns();
     renderAll();
@@ -2120,10 +2155,16 @@ function renderAccountTree(containerId, rows, showAgent) {
       const items = ents[e].slice().sort((a,b)=>b.arr-a.arr);
       const id = containerId+'-g'+(gid++);
       const eArr = items.reduce((s,r)=>s+r.arr,0);
+      const aeName = uniqJoin(items.map(r=>r.ae));
+      const aeMgr  = uniqJoin(items.map(r=>r.aeManager));
+      const aeCell = aeName === '—'
+        ? '<span style="color:var(--faint)">—</span>'
+        : `${aeName}${aeMgr && aeMgr !== '—' ? `<div style="font-size:10px;color:var(--muted)">↳ ${aeMgr}</div>` : ''}`;
       const childRows = items.map(it => `<tr class="tree-child ${id}" style="display:none;background:#fbfcfe">
         <td style="padding:6px 10px 6px 50px;border-bottom:1px solid var(--border)">${it.rooftopName||it.entityName||'—'}${showAgent&&it.agent?` <span style="color:var(--faint)">· ${it.agent}</span>`:''}<div style="font-size:10px;color:var(--muted)">${it.stage||''}${it.subStage?' · '+it.subStage:''}</div></td>
         <td class="td-right" style="border-bottom:1px solid var(--border)">${fmt$(it.arr)}</td>
         <td style="border-bottom:1px solid var(--border)">${it.obPoc||'—'}</td>
+        <td style="border-bottom:1px solid var(--border)"></td>
         <td style="border-bottom:1px solid var(--border)">${cleanTreeTxt(it.blockedReason)||'—'}</td>
         <td style="border-bottom:1px solid var(--border);max-width:240px;white-space:normal;color:var(--muted)">${cleanTreeTxt(it.blockedRemarks)||'—'}</td>
         <td class="td-muted" style="border-bottom:1px solid var(--border)">${dt(it.projectionDate)}</td>
@@ -2132,6 +2173,7 @@ function renderAccountTree(containerId, rows, showAgent) {
         <td style="padding:8px 10px 8px 34px;border-bottom:1px solid var(--border);font-weight:600"><span class="tree-caret" style="display:inline-block;width:14px;color:var(--muted)">▸</span>${e} <span style="font-weight:500;color:var(--muted);font-size:12px">(${items.length})</span></td>
         <td class="td-right" style="border-bottom:1px solid var(--border);font-weight:700">${fmt$(eArr)}</td>
         <td style="border-bottom:1px solid var(--border)">${uniqJoin(items.map(r=>r.obPoc))}</td>
+        <td style="border-bottom:1px solid var(--border)">${aeCell}</td>
         <td style="border-bottom:1px solid var(--border)">${uniqJoin(items.map(r=>r.blockedReason))}</td>
         <td style="border-bottom:1px solid var(--border);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">${uniqJoin(items.map(r=>r.blockedRemarks))}</td>
         <td></td>
@@ -2141,14 +2183,14 @@ function renderAccountTree(containerId, rows, showAgent) {
 
   const sections = keys.map(k => {
     const mrows = months[k];
-    const monthHdr = `<tr><td colspan="6" style="background:var(--bg);padding:9px 12px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border);position:sticky;top:0;height:20px;z-index:6">${mLabel(k)} <span style="color:var(--blue)">· ${fmt$(mrows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} rooftops</span></td></tr>`;
+    const monthHdr = `<tr><td colspan="7" style="background:var(--bg);padding:9px 12px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border);position:sticky;top:0;height:20px;z-index:6">${mLabel(k)} <span style="color:var(--blue)">· ${fmt$(mrows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} rooftops</span></td></tr>`;
     const byConf = { Confirmed:[], Upside:[], Unconfirmed:[] };
     mrows.forEach(r => byConf[confOf(r)].push(r));
     const ownerColor = o => /tech/i.test(o) ? '#2563EB' : /client/i.test(o) ? '#DC2626' : '#94A3B8';
     const confBlocks = ['Confirmed','Upside','Unconfirmed'].filter(c => byConf[c].length).map(c => {
       const crows = byConf[c];
       const nEnt = new Set(crows.map(r=>r.entityName||r.rooftopName||'—')).size;
-      const hdr = `<tr><td colspan="6" style="padding:6px 12px 6px 18px;font-weight:700;color:${confColor[c]};background:#fff;border-bottom:1px solid var(--border);border-left:4px solid ${confColor[c]};position:sticky;top:36px;z-index:5">${c} <span style="font-weight:600">· ${fmt$(crows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:500;font-size:12px">· ${nEnt} ent · ${crows.length} rooftops</span></td></tr>`;
+      const hdr = `<tr><td colspan="7" style="padding:6px 12px 6px 18px;font-weight:700;color:${confColor[c]};background:#fff;border-bottom:1px solid var(--border);border-left:4px solid ${confColor[c]};position:sticky;top:36px;z-index:5">${c} <span style="font-weight:600">· ${fmt$(crows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:500;font-size:12px">· ${nEnt} ent · ${crows.length} rooftops</span></td></tr>`;
       if (c !== 'Upside') return hdr + buildEnts(crows);
       // Upside → bifurcate by Blocked Owner (Client / Tech / Unassigned)
       const byOwner = {};
@@ -2157,7 +2199,7 @@ function renderAccountTree(containerId, rows, showAgent) {
       const ownerBlocks = ownerKeys.map(o => {
         const orows = byOwner[o];
         const oEnt = new Set(orows.map(r=>r.entityName||r.rooftopName||'—')).size;
-        const oh = `<tr><td colspan="6" style="padding:5px 12px 5px 30px;font-weight:600;font-size:12.5px;color:${ownerColor(o)};background:#fff;border-bottom:1px dashed var(--border);position:sticky;top:65px;z-index:4">⛔ ${o} <span style="color:var(--muted);font-weight:500">· ${fmt$(orows.reduce((s,r)=>s+r.arr,0))} · ${oEnt} ent · ${orows.length} rooftops</span></td></tr>`;
+        const oh = `<tr><td colspan="7" style="padding:5px 12px 5px 30px;font-weight:600;font-size:12.5px;color:${ownerColor(o)};background:#fff;border-bottom:1px dashed var(--border);position:sticky;top:65px;z-index:4">⛔ ${o} <span style="color:var(--muted);font-weight:500">· ${fmt$(orows.reduce((s,r)=>s+r.arr,0))} · ${oEnt} ent · ${orows.length} rooftops</span></td></tr>`;
         return oh + buildEnts(orows);
       }).join('');
       return hdr + ownerBlocks;
@@ -2170,6 +2212,7 @@ function renderAccountTree(containerId, rows, showAgent) {
       <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Account / Rooftop</th>
       <th style="text-align:right;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">ARR</th>
       <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">OB POC</th>
+      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">AE (Manager)</th>
       <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Blocked Owner</th>
       <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Blocked Reason</th>
       <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Proj Live</th>

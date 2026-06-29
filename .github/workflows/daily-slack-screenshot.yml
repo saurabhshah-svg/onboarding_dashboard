@@ -29,6 +29,6 @@ jobs:
         env:
           EMAIL_REPORT_URL: https://spyne-onboarding-dashboard.vercel.app/#email
           EMAIL_TO: reports@spyne.ai
-          APPS_SCRIPT_URL: https://script.google.com/macros/s/AKfycbykaELvGyPvTzPKYwYrYuElWK4pepevjmSS0LOGgQeGLjLaYdNM7IIuZC1WurW3ctyiLQ/exec
+          APPS_SCRIPT_URL: https://script.google.com/macros/s/AKfycbzg3iR4fBWYjpwfG_68CDueg5RjqEZjQSNrUmqtEjfZl9Pe7Ai_7a5nqzG7mdyHzsWWdA/exec
           MAIL_SECRET: ${{ secrets.MAIL_SECRET }}
         run: node .github/scripts/email-report.js
