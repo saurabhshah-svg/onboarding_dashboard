@@ -601,16 +601,21 @@ const CUR_YM = CY + '-' + String(CM + 1).padStart(2, '0');  // e.g. "2026-06" â€
 // Sum current-month churn/contraction ARR from the CS churn sheet (array-of-arrays from parseCSV).
 // Col D (idx 3) = ARR, Col E (idx 4) = Churn/Contraction Month (YYYY-MM). Note/header rows are
 // skipped naturally since their Col E never equals CUR_YM.
+// IMPORTANT: Reseller/Partnership churn (Col H Customer Type = 'Reseller', or Col C Segment =
+// 'Reseller') is EXCLUDED here â€” that contraction is owned by the partnership sheet (PARTNERSHIP,
+// via col R Delta). Otherwise reseller churn would be double-counted against LARR.
 function computeRevenueLoss(churnRows) {
   if (!Array.isArray(churnRows)) return null;
   const out = { vini: 0, studio: 0, total: 0 };
   churnRows.forEach(r => {
-    if ((r[4] || '').trim() === CUR_YM) {
-      const arr = parseFloat(String(r[3] || '').replace(/[^0-9.\-]/g, '')) || 0;
-      if ((r[5] || '').trim().toLowerCase() === 'vini') out.vini += arr;
-      else out.studio += arr;   // anything not "Vini" (Col F) counts as Studio
-      out.total += arr;
-    }
+    if ((r[4] || '').trim() !== CUR_YM) return;
+    const custType = (r[7] || '').trim().toLowerCase();
+    const segment  = (r[2] || '').trim().toLowerCase();
+    if (custType === 'reseller' || segment === 'reseller') return;  // counted via PARTNERSHIP
+    const arr = parseFloat(String(r[3] || '').replace(/[^0-9.\-]/g, '')) || 0;
+    if ((r[5] || '').trim().toLowerCase() === 'vini') out.vini += arr;
+    else out.studio += arr;   // anything not "Vini" (Col F) counts as Studio
+    out.total += arr;
   });
   return out;
 }
