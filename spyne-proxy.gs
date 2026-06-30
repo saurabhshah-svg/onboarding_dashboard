@@ -16,6 +16,10 @@ const CHURN_GID = 1421999984;
 const AE_SPREADSHEET_ID = '131ItK3zb2cb6ZJNP1JZ5fIbgL7DRbCFeAaZCxnaRIjI';
 const AE_GID = 0;
 
+// Partnership RAG dashboard (separate spreadsheet) — col R "Delta" drives Expansion/Churn
+const PARTNERSHIP_SPREADSHEET_ID = '1kvvDbnpUAodPnmnLEVAWejLAzTwEflkzLSkXiAeOkB4';
+const PARTNERSHIP_GID = 135115178;
+
 // Shared secret for the daily-email endpoint (doPost). Set this to the SAME value
 // you store as the GitHub Action secret MAIL_SECRET. Leave blank to disable emailing.
 const MAIL_SECRET = '';   // e.g. obmail-xxxxxxxx-xxxx-...
@@ -26,6 +30,7 @@ function doGet(e) {
     let ssId, gid, useDisplay = false;
     if (sheet === 'churn') { ssId = CHURN_SPREADSHEET_ID; gid = CHURN_GID; useDisplay = true; }
     else if (sheet === 'aemap') { ssId = AE_SPREADSHEET_ID; gid = AE_GID; useDisplay = true; }
+    else if (sheet === 'partnership') { ssId = PARTNERSHIP_SPREADSHEET_ID; gid = PARTNERSHIP_GID; }
     else { ssId = SPREADSHEET_ID; gid = GID_MAP[sheet]; }
     if (gid === undefined || gid === null) return respond({ error: 'Unknown sheet: ' + sheet });
 

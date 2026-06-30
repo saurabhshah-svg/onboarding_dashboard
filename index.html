@@ -775,6 +775,31 @@ function attachAE(rows) {
   });
 }
 
+// Partnership channel — from the RAG Dashboard (?sheet=partnership).
+// Col R "Delta" is a MONTHLY revenue change → annualize ×12 for ARR.
+// Positive Delta = Expansion (+New), Negative = Churn/Contraction.
+let PARTNERSHIP = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:false };
+function parsePartnership(rows) {
+  const P = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:true };
+  if (!rows || !rows.length) return P;
+  const cm = buildColMap(rows[0]);   // header is the first row
+  rows.slice(1).forEach(r => {
+    if (!getCol(r, cm, 'partners')) return;
+    const ds = getCol(r, cm, 'delta');
+    if (ds === '') return;
+    const d = parseARR(ds) * 12;     // annualize monthly delta → ARR
+    if (!d) return;
+    const isV = /vini/i.test(getCol(r, cm, 'product'));
+    P.count++;
+    if (d > 0) { P.exp += d;  if (isV) P.expVini += d;  else P.expStudio += d; }
+    else       { P.churn += -d; if (isV) P.churnVini += -d; else P.churnStudio += -d; }
+  });
+  P.net = P.exp - P.churn;
+  P.netStudio = P.expStudio - P.churnStudio;
+  P.netVini   = P.expVini   - P.churnVini;
+  return P;
+}
+
 function parseVini(rows) {
   const hi = findHeaderRow(rows);
   const cm = buildColMap(rows[hi]);
@@ -989,6 +1014,16 @@ async function fetchLiveSheet(sheetKey) {
   return { csv: parseCSV(json.csv), syncedAt: json.syncedAt };
 }
 
+// Partnership RAG dashboard is a separate, PUBLIC sheet. Its gviz CSV endpoint
+// reflects the request Origin in Access-Control-Allow-Origin, so we can fetch it
+// directly from the browser — no proxy route needed. Returns parsed CSV rows.
+const PARTNERSHIP_CSV_URL = 'https://docs.google.com/spreadsheets/d/1kvvDbnpUAodPnmnLEVAWejLAzTwEflkzLSkXiAeOkB4/gviz/tq?tqx=out:csv&gid=135115178';
+async function fetchPartnership() {
+  const resp = await fetch(PARTNERSHIP_CSV_URL);
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  return parseCSV(await resp.text());
+}
+
 async function loadAllData() {
   showLoadingBanner('⟳ Loading data...');
   try {
@@ -996,12 +1031,13 @@ async function loadAllData() {
 
     if (APPS_SCRIPT_URL && APPS_SCRIPT_URL.trim() !== '') {
       showLoadingBanner('⟳ Fetching live data from Google Sheets...');
-      const [v, a, p, c, ae] = await Promise.all([
+      const [v, a, p, c, ae, pt] = await Promise.all([
         fetchLiveSheet('vini'),
         fetchLiveSheet('amer'),
         fetchLiveSheet('apac'),
         fetchLiveSheet('churn').catch(err => { console.warn('Churn fetch failed, using fallback REVENUE_LOSS:', err); return null; }),
-        fetchLiveSheet('aemap').catch(err => { console.warn('AE map fetch failed, AE column will be blank:', err); return null; })
+        fetchLiveSheet('aemap').catch(err => { console.warn('AE map fetch failed, AE column will be blank:', err); return null; }),
+        fetchPartnership().catch(err => { console.warn('Partnership fetch failed, channel will show $0:', err); return null; })
       ]);
       viniCSV = v.csv; amerCSV = a.csv; apacCSV = p.csv;
       if (c && c.csv) {
@@ -1009,6 +1045,7 @@ async function loadAllData() {
         if (rl) { REVENUE_LOSS_BY_PRODUCT = { vini: rl.vini, studio: rl.studio }; REVENUE_LOSS = rl.total; }
       }
       if (ae && ae.csv) aeMap = parseAeMap(ae.csv);
+      if (pt) PARTNERSHIP = parsePartnership(pt);
       syncedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
       showSyncBanner('🟢 Live data · Last synced: ' + syncedAt, 'live');
     } else {
@@ -1320,15 +1357,16 @@ function renderSlack(rows) {
   const blockedRows = rows.filter(r => r.currentMonthConf === 'Upside');
   const liveARR = sum(liveRows), expARR = sum(expRows);
   const expConf = sum(expRows.filter(r => r.currentMonthConf === 'Confirmed'));  // confirmed-to-go-live only
-  const totalLARR = BASE_LARR + liveARR - sum(dropRows) - REVENUE_LOSS;
+  const liveTotal = liveARR + PARTNERSHIP.exp;   // Live this month incl. partnership expansion
+  const totalLARR = BASE_LARR + liveARR - sum(dropRows) - REVENUE_LOSS + PARTNERSHIP.net;
   const meLARR = totalLARR + expConf;       // Exp. Month-End = already live + confirmed
-  const newLiveExp = liveARR + expConf;     // already live this month + confirmed
+  const newLiveExp = liveTotal + expConf;   // already live this month (incl partnership) + confirmed
   const pct = (v,t) => t ? Math.round(v/t*100) : 0;
   const pctColor = p => p>=90 ? '#16A34A' : p>=60 ? '#D97706' : '#DC2626';
 
   const card = (label,val,accent,sub,subColor) => `<div style="flex:1;min-width:0;background:#fff;border:1px solid var(--border);border-left:4px solid ${accent};border-radius:10px;padding:11px 12px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${label}</div><div style="font-size:clamp(18px,5.5vw,24px);font-weight:800;color:var(--text);margin-top:3px;line-height:1.05">${val}</div>${sub?`<div style="font-size:12px;font-weight:700;margin-top:3px;color:${subColor||'var(--muted)'};white-space:nowrap">${sub}</div>`:''}</div>`;
 
-  const larrPct = pct(totalLARR, LARR_TARGET), nlPct = pct(liveARR, NEW_LIVE_TARGET);
+  const larrPct = pct(totalLARR, LARR_TARGET), nlPct = pct(liveTotal, NEW_LIVE_TARGET);
   const row3 = (a,b,c) => `<div style="display:flex;gap:8px">${a}${b}${c}</div>`;
   const larrRow = row3(
     card('Target', fmtC(LARR_TARGET), 'var(--muted)'),
@@ -1337,9 +1375,13 @@ function renderSlack(rows) {
   );
   const nlRow = row3(
     card('Target', fmtC(NEW_LIVE_TARGET), 'var(--muted)'),
-    card('Current', fmtC(liveARR), 'var(--blue)', nlPct+'% to target', pctColor(nlPct)),
+    card('Current', fmtC(liveTotal), 'var(--blue)', nlPct+'% to target', pctColor(nlPct)),
     card('Exp. Month-End', fmtC(newLiveExp), 'var(--green)')
   );
+  // D2D vs Partnership breakup captions
+  const splitLine = (l1,v1,l2,v2,c2) => `<div style="font-size:11px;color:var(--muted);margin-top:5px;padding:0 2px;display:flex;justify-content:space-between"><span>${l1}: <b style="color:var(--text)">${fmtC(v1)}</b></span><span>${l2}: <b style="color:${c2}">${fmtC(v2)}</b></span></div>`;
+  const larrSplit = splitLine('D2D net', liveARR - sum(dropRows) - REVENUE_LOSS, 'Partnership net', PARTNERSHIP.net, PARTNERSHIP.net>=0?'#16A34A':'#DC2626');
+  const nlSplit   = splitLine('D2D live', liveARR, 'Partnership exp', PARTNERSHIP.exp, '#16A34A');
 
   // Blocked summary: Blocked Owner × Product
   const ownerOf = r => { const o=(r.blockedReason||'').trim(); return /client/i.test(o)?'Client':/tech/i.test(o)?'Tech':'Unassigned'; };
@@ -1375,8 +1417,10 @@ function renderSlack(rows) {
       <div style="padding:6px 14px 16px">
         ${secTitle('LARR')}
         ${larrRow}
+        ${larrSplit}
         ${secTitle('New Live · this month')}
         ${nlRow}
+        ${nlSplit}
         ${secTitle('Blocked Summary')}
         <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">${blkTable}</div>
       </div>
@@ -1413,13 +1457,14 @@ function renderDisplay(rows) {
   const wentYestRows = rows.filter(r => isLive(r) && isYest(r.goLiveDate));
   const obYestRows = rows.filter(r => isYest(r.obCallDate));
   const liveARR=sum(liveRows), furtherARR=sum(furtherRows), todayARR=sum(todayRows), blockedARR=sum(blockedRows), funnelARR=sum(funnelRows);
-  const totalLARR = BASE_LARR + liveARR - sum(dropRows) - REVENUE_LOSS;
+  const liveTotal = liveARR + PARTNERSHIP.exp;   // incl. partnership expansion
+  const totalLARR = BASE_LARR + liveARR - sum(dropRows) - REVENUE_LOSS + PARTNERSHIP.net;
   const meLARR = totalLARR + sum(expRows);
   const expConf = sum(expRows.filter(r=>r.currentMonthConf==='Confirmed'));
   const furtherConf = sum(furtherRows.filter(r=>r.currentMonthConf==='Confirmed'));
   const meLARRConf = totalLARR + expConf;
-  const larrStudio = BASE_LARR_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio;
-  const larrVini   = BASE_LARR_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini;
+  const larrStudio = BASE_LARR_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
+  const larrVini   = BASE_LARR_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
   const stTat = avg(rows.filter(isStudio).map(r=>r.liveTat).filter(x=>x>0));
   const viTat = avg(rows.filter(isVini).map(r=>r.liveTat).filter(x=>x>0));
   const avgTat = avg(rows.map(r=>r.liveTat).filter(x=>x>0));
@@ -1428,7 +1473,7 @@ function renderDisplay(rows) {
   const topStrip = `
     <div style="display:flex;gap:10px">
       ${kpi('Total LARR', fmtC(totalLARR), `S ${fmtC(larrStudio)} · V ${fmtC(larrVini)}`, 'var(--blue)')}
-      ${kpi('Live This Month', fmtC(liveARR), uniq(liveRows)+' ent', 'var(--green)')}
+      ${kpi('Live This Month', fmtC(liveTotal), `D2D ${fmtC(liveARR)} · Ptnr ${fmtC(PARTNERSHIP.exp)}`, 'var(--green)')}
       ${kpi('Went Live Yesterday', fmtC(sum(wentYestRows)), uniq(wentYestRows)+' acct', 'var(--green)')}
       ${kpi('Came In OB Yesterday', fmtC(sum(obYestRows)), uniq(obYestRows)+' acct', 'var(--blue)')}
       ${kpi('ARR Going Live Today', fmtC(todayARR), 'This wk '+fmtC(sum(weekRows)), '#16A34A')}
@@ -1521,7 +1566,8 @@ function renderEmailView(rows) {
   const funnelRows  = rows.filter(isInFunnel);
   const blockedRows = rows.filter(r => r.currentMonthConf === 'Upside');
   const liveARR=sum(liveRows), dropARR=sum(dropRows), expARR=sum(expRows), funnelARR=sum(funnelRows), blockedARR=sum(blockedRows);
-  const totalLARR  = BASE_LARR + liveARR - dropARR - REVENUE_LOSS;
+  const liveTotal  = liveARR + PARTNERSHIP.exp;   // incl. partnership expansion
+  const totalLARR  = BASE_LARR + liveARR - dropARR - REVENUE_LOSS + PARTNERSHIP.net;
   const expConfARR = sum(expRows.filter(isConfirmed));
   const meLARR     = totalLARR + expARR;
   const meLARRConf = totalLARR + expConfARR;
@@ -1539,8 +1585,8 @@ function renderEmailView(rows) {
   const heading = TODAY.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 
   const fmtC = n => { n = Math.round(n); const a = Math.abs(n); return a>=1e6 ? '$'+(n/1e6).toFixed(2)+'M' : a>=1e3 ? '$'+(n/1e3).toFixed(1)+'K' : '$'+n; };
-  const larrStudio = BASE_LARR_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio;
-  const larrVini   = BASE_LARR_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini;
+  const larrStudio = BASE_LARR_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
+  const larrVini   = BASE_LARR_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
 
   // Compact KPI card — pass bg/vcol to highlight a card
   // Label reserves 2 lines (min-height) and bottom-aligns, so the number always
@@ -1554,7 +1600,7 @@ function renderEmailView(rows) {
   // One continuous sequence; "live" cards get a green left-border (no green fill).
   const cards = [
     C('Total LARR', fmtC(totalLARR), `S ${fmtC(larrStudio)} · V ${fmtC(larrVini)}`, 'var(--blue)'),
-    C('Live This Month', fmtC(liveARR), uniq(liveRows) + ' enterprises', 'var(--green)'),
+    C('Live This Month', fmtC(liveTotal), `D2D ${fmtC(liveARR)} · Ptnr ${fmtC(PARTNERSHIP.exp)}`, 'var(--green)'),
     C('Went Live Yesterday', fmtC(sum(yestRows)), uniq(yestRows) + ' accounts', 'var(--green)'),
     C('Came In OB Yesterday', fmtC(sum(obYestRows)), uniq(obYestRows) + ' accounts', 'var(--blue)'),
     C('ARR Going Live Today', fmtC(sum(todayRows)), 'This week: ' + fmtC(sum(weekRows)), 'var(--green)'),
@@ -1633,8 +1679,13 @@ function renderOverview(filtered) {
   const revLoss  = prodFilter === 'Vini'   ? REVENUE_LOSS_BY_PRODUCT.vini
                  : prodFilter === 'Studio' ? REVENUE_LOSS_BY_PRODUCT.studio
                  : REVENUE_LOSS;
-  // Task 2: subtract Revenue Loss (from CS Dashboard) from LARR
-  const totalLARR  = baseLARR + liveARR - droppedARR - revLoss;
+  // Partnership channel movement (annualized), scoped to the product filter
+  const partNet = prodFilter === 'Vini' ? PARTNERSHIP.netVini : prodFilter === 'Studio' ? PARTNERSHIP.netStudio : PARTNERSHIP.net;
+  const partExp = prodFilter === 'Vini' ? PARTNERSHIP.expVini : prodFilter === 'Studio' ? PARTNERSHIP.expStudio : PARTNERSHIP.exp;
+  const partChurn = prodFilter === 'Vini' ? PARTNERSHIP.churnVini : prodFilter === 'Studio' ? PARTNERSHIP.churnStudio : PARTNERSHIP.churn;
+  // Task 2: subtract Revenue Loss (from CS Dashboard) from LARR; add Partnership net movement
+  const totalLARR  = baseLARR + liveARR - droppedARR - revLoss + partNet;
+  const liveTotal  = liveARR + partExp;   // Live This Month incl. partnership expansion
   const expARR     = expRows.reduce((s,r)=>s+r.arr,0);
   const expN       = expRows.length;
   const meLARR     = totalLARR + expARR;
@@ -1690,7 +1741,7 @@ function renderOverview(filtered) {
     const isP = r => p === 'vini' ? r.source === 'vini' : r.source !== 'vini';
     const lv = liveRows.filter(isP).reduce((s,r)=>s+r.arr,0);
     const dr = droppedRows.filter(isP).reduce((s,r)=>s+r.arr,0);
-    return BASE_LARR_BY_PRODUCT[p] + lv - dr - REVENUE_LOSS_BY_PRODUCT[p];
+    return BASE_LARR_BY_PRODUCT[p] + lv - dr - REVENUE_LOSS_BY_PRODUCT[p] + (p === 'vini' ? PARTNERSHIP.netVini : PARTNERSHIP.netStudio);
   };
   document.getElementById('kpi-larr-tags').innerHTML =
     prodFilter === 'All'
@@ -1716,7 +1767,8 @@ function renderOverview(filtered) {
   document.getElementById('kpi-larr-sub').innerHTML =
     `<span class="tag">Base: ${fmt$(baseLARR)}</span>` +
     `<span class="tag" style="color:var(--green)">+${fmt$(liveARR)} Live</span>` +
-    (revLoss ? `<span class="tag" style="color:var(--red)">−${fmt$(revLoss)} Churn</span>` : '');
+    (revLoss ? `<span class="tag" style="color:var(--red)">−${fmt$(revLoss)} Churn</span>` : '') +
+    (partNet ? `<span class="tag" style="color:${partNet>=0?'var(--green)':'var(--red)'}">${partNet>=0?'+':'−'}${fmt$(Math.abs(partNet))} Partnership</span>` : '');
 
   // Blocked ARR card — two labeled splits: by product, by projected live date
   document.getElementById('kpi-blocked-arr').textContent = fmt$(blockedARR);
@@ -1743,9 +1795,10 @@ function renderOverview(filtered) {
     pill('Missed',      blkPast,  '#F97316') +
     pill('No date',     blkNone,  'var(--text)', true);
 
-  // Live This Month — ARR big, enterprise count small
-  document.getElementById('kpi-live-n').textContent   = fmt$(liveARR);
-  document.getElementById('kpi-live-arr').textContent = liveEntCount + ' enterprises went live';
+  // Live This Month — ARR big (incl. partnership expansion), with D2D/Partnership split
+  document.getElementById('kpi-live-n').textContent   = fmt$(liveTotal);
+  document.getElementById('kpi-live-arr').innerHTML   = `${liveEntCount} ents · D2D ${fmt$(liveARR)}` +
+    (partExp ? ` · <span style="color:var(--green);font-weight:700">Partnership ${fmt$(partExp)}</span>` : '');
 
   // Expected Go-Live — ARR big, enterprise count small
   document.getElementById('kpi-exp-n').textContent    = fmt$(expARR);
