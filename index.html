@@ -2183,14 +2183,14 @@ function renderAccountTree(containerId, rows, showAgent) {
 
   const sections = keys.map(k => {
     const mrows = months[k];
-    const monthHdr = `<tr><td colspan="7" style="background:var(--bg);padding:9px 12px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border);position:sticky;top:0;height:20px;z-index:6">${mLabel(k)} <span style="color:var(--blue)">· ${fmt$(mrows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} rooftops</span></td></tr>`;
+    const monthHdr = `<tr><td colspan="7" style="background:var(--bg);padding:9px 12px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border);position:sticky;top:27px;height:20px;z-index:6">${mLabel(k)} <span style="color:var(--blue)">· ${fmt$(mrows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} rooftops</span></td></tr>`;
     const byConf = { Confirmed:[], Upside:[], Unconfirmed:[] };
     mrows.forEach(r => byConf[confOf(r)].push(r));
     const ownerColor = o => /tech/i.test(o) ? '#2563EB' : /client/i.test(o) ? '#DC2626' : '#94A3B8';
     const confBlocks = ['Confirmed','Upside','Unconfirmed'].filter(c => byConf[c].length).map(c => {
       const crows = byConf[c];
       const nEnt = new Set(crows.map(r=>r.entityName||r.rooftopName||'—')).size;
-      const hdr = `<tr><td colspan="7" style="padding:6px 12px 6px 18px;font-weight:700;color:${confColor[c]};background:#fff;border-bottom:1px solid var(--border);border-left:4px solid ${confColor[c]};position:sticky;top:36px;z-index:5">${c} <span style="font-weight:600">· ${fmt$(crows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:500;font-size:12px">· ${nEnt} ent · ${crows.length} rooftops</span></td></tr>`;
+      const hdr = `<tr><td colspan="7" style="padding:6px 12px 6px 18px;font-weight:700;color:${confColor[c]};background:#fff;border-bottom:1px solid var(--border);border-left:4px solid ${confColor[c]};position:sticky;top:63px;z-index:5">${c} <span style="font-weight:600">· ${fmt$(crows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:500;font-size:12px">· ${nEnt} ent · ${crows.length} rooftops</span></td></tr>`;
       if (c !== 'Upside') return hdr + buildEnts(crows);
       // Upside → bifurcate by Blocked Owner (Client / Tech / Unassigned)
       const byOwner = {};
@@ -2199,7 +2199,7 @@ function renderAccountTree(containerId, rows, showAgent) {
       const ownerBlocks = ownerKeys.map(o => {
         const orows = byOwner[o];
         const oEnt = new Set(orows.map(r=>r.entityName||r.rooftopName||'—')).size;
-        const oh = `<tr><td colspan="7" style="padding:5px 12px 5px 30px;font-weight:600;font-size:12.5px;color:${ownerColor(o)};background:#fff;border-bottom:1px dashed var(--border);position:sticky;top:65px;z-index:4">⛔ ${o} <span style="color:var(--muted);font-weight:500">· ${fmt$(orows.reduce((s,r)=>s+r.arr,0))} · ${oEnt} ent · ${orows.length} rooftops</span></td></tr>`;
+        const oh = `<tr><td colspan="7" style="padding:5px 12px 5px 30px;font-weight:600;font-size:12.5px;color:${ownerColor(o)};background:#fff;border-bottom:1px dashed var(--border);position:sticky;top:92px;z-index:4">⛔ ${o} <span style="color:var(--muted);font-weight:500">· ${fmt$(orows.reduce((s,r)=>s+r.arr,0))} · ${oEnt} ent · ${orows.length} rooftops</span></td></tr>`;
         return oh + buildEnts(orows);
       }).join('');
       return hdr + ownerBlocks;
@@ -2207,15 +2207,16 @@ function renderAccountTree(containerId, rows, showAgent) {
     return monthHdr + confBlocks;
   }).join('');
 
+  const thBase = 'padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted);position:sticky;top:0;z-index:7;background:#F8FAFC';
   el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="background:#F8FAFC">
-      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Account / Rooftop</th>
-      <th style="text-align:right;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">ARR</th>
-      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">OB POC</th>
-      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">AE (Manager)</th>
-      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Blocked Owner</th>
-      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Blocked Reason</th>
-      <th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Proj Live</th>
+      <th style="text-align:left;${thBase}">Account / Rooftop</th>
+      <th style="text-align:right;${thBase}">ARR</th>
+      <th style="text-align:left;${thBase}">OB POC</th>
+      <th style="text-align:left;${thBase}">AE (Manager)</th>
+      <th style="text-align:left;${thBase}">Blocked Owner</th>
+      <th style="text-align:left;${thBase}">Blocked Reason</th>
+      <th style="text-align:left;${thBase}">Proj Live</th>
     </tr></thead>
     <tbody>${sections}</tbody>
   </table>`;
