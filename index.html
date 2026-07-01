@@ -297,6 +297,12 @@ const EMBEDDED_DATA = {
 
   </div>
 
+  <!-- Last Month LARR walk (bridge) -->
+  <div class="section" id="last-month-bridge-section" style="margin-bottom:20px">
+    <div class="section-title" id="last-month-bridge-title">Last Month — LARR Walk</div>
+    <div id="last-month-bridge"></div>
+  </div>
+
   <!-- Pipeline table + Blocked Reasons side by side -->
   <div style="display:flex;gap:20px;margin-bottom:20px;align-items:flex-start">
     <div class="section" style="flex:0 0 auto;min-width:0">
@@ -580,6 +586,7 @@ let REVENUE_LOSS = REVENUE_LOSS_BY_PRODUCT.vini + REVENUE_LOSS_BY_PRODUCT.studio
 
 // ─── State ───────────────────────────────────────────────────
 let viniRows = [], studioRows = [], allRows = [];
+let churnRowsRaw = [];   // raw CS churn sheet rows (array-of-arrays), for month-specific churn
 let currentTab = 'overview';
 let pocSortCol = -1, pocSortDir = 1;
 let stSortCol = -1, stSortDir = 1;
@@ -618,6 +625,19 @@ function computeRevenueLoss(churnRows) {
     out.total += arr;
   });
   return out;
+}
+
+// D2D churn for a specific YYYY-MM from the raw churn rows (excludes Reseller, like computeRevenueLoss).
+function churnD2DForMonth(ym) {
+  let total = 0;
+  churnRowsRaw.forEach(r => {
+    if ((r[4] || '').trim() !== ym) return;
+    const custType = (r[7] || '').trim().toLowerCase();
+    const segment  = (r[2] || '').trim().toLowerCase();
+    if (custType === 'reseller' || segment === 'reseller') return;
+    total += parseFloat(String(r[3] || '').replace(/[^0-9.\-]/g, '')) || 0;
+  });
+  return total;
 }
 
 // ─── Business logic ──────────────────────────────────────────
@@ -783,14 +803,20 @@ function attachAE(rows) {
 // Partnership channel — from the RAG Dashboard (?sheet=partnership).
 // Col R "Delta" is a MONTHLY revenue change → annualize ×12 for ARR.
 // Positive Delta = Expansion (+New), Negative = Churn/Contraction.
+// PARTNERSHIP = current month's movement; PARTNERSHIP_PREV = prior month's (for the last-month bridge).
+// The RAG sheet rolls monthly and labels its delta columns RELATIVE to its current month:
+//   'Delta (M-1 to M)'   = latest month's change  → current month
+//   'Delta (M-2 to M-1)' = the month before that  → last month (bridge)
+// ('delta' is the old single-column name, kept as a fallback.)
 let PARTNERSHIP = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:false };
-function parsePartnership(rows) {
+let PARTNERSHIP_PREV = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:false };
+function parsePartnership(rows, deltaNames) {
   const P = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:true };
   if (!rows || !rows.length) return P;
   const cm = buildColMap(rows[0]);   // header is the first row
   rows.slice(1).forEach(r => {
     if (!getCol(r, cm, 'partners')) return;
-    const ds = getCol(r, cm, 'delta');
+    const ds = getCol(r, cm, ...deltaNames);
     if (ds === '') return;
     const d = parseARR(ds) * 12;     // annualize monthly delta → ARR
     if (!d) return;
@@ -1046,11 +1072,15 @@ async function loadAllData() {
       ]);
       viniCSV = v.csv; amerCSV = a.csv; apacCSV = p.csv;
       if (c && c.csv) {
+        churnRowsRaw = c.csv;                 // keep raw rows for month-specific churn (e.g. last-month bridge)
         const rl = computeRevenueLoss(c.csv);
         if (rl) { REVENUE_LOSS_BY_PRODUCT = { vini: rl.vini, studio: rl.studio }; REVENUE_LOSS = rl.total; }
       }
       if (ae && ae.csv) aeMap = parseAeMap(ae.csv);
-      if (pt) PARTNERSHIP = parsePartnership(pt);
+      if (pt) {
+        PARTNERSHIP      = parsePartnership(pt, ['delta (m-1 to m)', 'delta']);        // current month
+        PARTNERSHIP_PREV = parsePartnership(pt, ['delta (m-2 to m-1)', 'delta']);      // prior month (bridge)
+      }
       syncedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
       showSyncBanner('🟢 Live data · Last synced: ' + syncedAt, 'live');
     } else {
@@ -1841,10 +1871,49 @@ function renderOverview(filtered) {
 
   // Revenue at Risk card removed (Task 3)
 
+  renderLastMonthBridge();
   renderPipelineTable(filtered);
   renderDoDChart(filtered);
   renderBlockedCharts(filtered);
   renderPocPendency(filtered);
+}
+
+// Last-month LARR walk (bridge), live-computed each load. Whole-company (all-up).
+// Start anchor = BASE_LARR (the month-before-last's closing LARR). Reseller lines come
+// from the partnership sheet's Delta; D2D churn from the CS sheet (Reseller excluded).
+function renderLastMonthBridge() {
+  const el = document.getElementById('last-month-bridge');
+  if (!el) return;
+  const lastM = CM === 0 ? 11 : CM - 1, lastY = CM === 0 ? CY - 1 : CY;       // previous calendar month
+  const prevM = lastM === 0 ? 11 : lastM - 1, prevY = lastM === 0 ? lastY - 1 : lastY;  // month before that
+  const ym = lastY + '-' + String(lastM + 1).padStart(2, '0');
+  const mLab = (m,y) => new Date(y, m, 1).toLocaleString('en-US',{month:'short'}) + " '" + String(y).slice(2);
+  const inMo = (d,m,y) => d && d.getMonth()===m && d.getFullYear()===y;
+  const sum  = a => a.reduce((s,r)=>s+r.arr,0);
+  const liveD2D = sum(allRows.filter(r=>isLive(r) && inMo(r.goLiveDate,lastM,lastY)));
+  const dropD2D = sum(allRows.filter(r=>isDropped(r) && (inMo(r.goLiveDate,lastM,lastY)||inMo(r.projectionDate,lastM,lastY))));
+  const newLiveD2D = liveD2D - dropD2D;             // net of OB-stage drops
+  const churnD2D   = churnD2DForMonth(ym);
+  const newLiveRes = PARTNERSHIP_PREV.exp;          // prior-month reseller movement (Delta M-2→M-1)
+  const churnRes   = PARTNERSHIP_PREV.churn;
+  const start = BASE_LARR;
+  const end   = start + newLiveD2D + newLiveRes - churnD2D - churnRes;
+
+  document.getElementById('last-month-bridge-title').innerHTML =
+    `Last Month — LARR Walk <span style="font-weight:500;color:var(--muted);font-size:12px">— ${mLab(prevM,prevY)} End → ${mLab(lastM,lastY)} End · all products</span>`;
+  const anchor = (lbl,val) => `<div style="flex:1 1 150px;min-width:150px;background:#0F2350;color:#fff;border-radius:10px;padding:12px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;opacity:.7">${lbl}</div><div style="font-size:20px;font-weight:800;margin-top:3px">${fmt$(val)}</div></div>`;
+  const step = (lbl,val,pos) => `<div style="flex:1 1 130px;min-width:130px;background:#fff;border:1px solid var(--border);border-left:4px solid ${pos?'var(--green)':'var(--red)'};border-radius:10px;padding:12px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${lbl}</div><div style="font-size:18px;font-weight:800;margin-top:3px;color:${pos?'var(--green)':'var(--red)'}">${pos?'+':'−'}${fmt$(Math.abs(val))}</div></div>`;
+  const arrow = `<div style="display:flex;align-items:center;color:var(--faint);font-size:20px;font-weight:700;padding:0 2px">→</div>`;
+  el.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch">
+    ${anchor(mLab(prevM,prevY)+' End LARR', start)}
+    ${arrow}
+    ${step('New Live (D2D)', newLiveD2D, true)}
+    ${step('New Live (Reseller)', newLiveRes, true)}
+    ${step('Churn (D2D)', churnD2D, false)}
+    ${step('Churn (Reseller)', churnRes, false)}
+    ${arrow}
+    ${anchor(mLab(lastM,lastY)+' End LARR', end)}
+  </div>`;
 }
 
 function renderPipelineTable(filtered) {
