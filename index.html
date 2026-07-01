@@ -79,6 +79,15 @@ a:hover { text-decoration:underline; }
 .kpi-sub { font-size:11px; color:var(--muted); margin-top:4px; }
 .kpi-tags { font-size:11px; color:var(--muted); margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
 .tag { display:inline-block; padding:2px 7px; border-radius:10px; background:var(--bg); font-size:11px; font-weight:500; }
+/* Grouped, labeled breakdowns inside KPI cards */
+.kpi-grp { margin-top:8px; }
+.kpi-grp-hdr { font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:var(--faint); margin:0 0 4px; }
+.kpi-prod { margin-top:9px; padding-top:8px; border-top:1px dashed var(--border); }
+.pillrow { display:flex; flex-wrap:wrap; gap:5px; }
+.kpi-pill { display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:8px; background:var(--bg); font-size:11px; line-height:1.7; white-space:nowrap; }
+.kpi-pill .pl { color:var(--muted); font-weight:600; }
+.kpi-pill .pv { font-weight:800; color:var(--text); }
+.kpi-pill .dot { width:7px; height:7px; border-radius:50%; display:inline-block; flex:0 0 auto; }
 
 /* Section */
 .section { background:var(--card); border-radius:12px; box-shadow:var(--shadow); padding:20px; margin-bottom:20px; }
@@ -1773,20 +1782,26 @@ function renderOverview(filtered) {
   // ── Helper: count unique enterprises in a row set ──────────────────────────
   const uniqEnts = rows => new Set(rows.map(r => r.entityName || r.rooftopName || '?')).size;
 
-  // ── Live This Month: breakdown by 'Live From' (which funnel went live) ───────
-  const liveSrcARR = {}, liveSrcEnts = {};
-  liveRows.forEach(r => {
-    const k = r.liveFrom || 'Untagged';
-    liveSrcARR[k]  = (liveSrcARR[k]||0) + r.arr;
-    if (!liveSrcEnts[k]) liveSrcEnts[k] = new Set();
-    liveSrcEnts[k].add(r.entityName || r.rooftopName || '?');
-  });
+  // ── Card breakdown helpers: labeled groups of equal-weight pills ────────────
+  const kpill = (label, val, color) => `<span class="kpi-pill"><span class="pl">${label}</span><span class="pv"${color?` style="color:${color}"`:''}>${val}</span></span>`;
+  const kgrp  = (hdr, pills) => `<div class="kpi-grp-hdr">${hdr}</div><div class="pillrow">${pills}</div>`;
+  // Product (Studio/Vini) group — always rendered as a divided block at the card bottom.
+  const prodPill = (name, val, color) => `<span class="kpi-pill"><span class="dot" style="background:${color}"></span><span class="pl">${name}</span><span class="pv" style="color:${color}">${val}</span></span>`;
+  const kprod = (sVal, vVal) => `<div class="kpi-prod"><div class="kpi-grp-hdr">By Product</div><div class="pillrow">` +
+      (prodFilter === 'All'
+        ? prodPill('Studio', fmt$(sVal), 'var(--blue)') + prodPill('Vini', fmt$(vVal), 'var(--green)')
+        : prodPill(prodFilter, fmt$(prodFilter === 'Vini' ? vVal : sVal), prodFilter === 'Vini' ? 'var(--green)' : 'var(--blue)'))
+      + `</div></div>`;
+
+  // ── Live This Month: By Channel (D2D / Partnership) + By Product ─────────────
   const liveEntCount = uniqEnts(liveRows);
-  document.getElementById('kpi-live-tags').innerHTML =
-    Object.entries(liveSrcARR)
-      .sort((a,b) => b[1]-a[1])
-      .map(([k,v])=>`<span class="tag">${k}: ${fmt$(v)}</span>`)
-      .join('');
+  const liveStudioD2D = liveRows.filter(r=>r.source!=='vini').reduce((s,r)=>s+r.arr,0);
+  const liveViniD2D   = liveRows.filter(r=>r.source==='vini').reduce((s,r)=>s+r.arr,0);
+  document.getElementById('kpi-live-n').textContent = fmt$(liveTotal);
+  document.getElementById('kpi-live-arr').innerHTML =
+    `<div style="margin-bottom:2px">${liveEntCount} enterprise${liveEntCount!==1?'s':''} live</div>` +
+    `<div class="kpi-grp">${kgrp('By Channel', kpill('D2D', fmt$(liveARR)) + kpill('Partnership', fmt$(partExp)))}</div>`;
+  document.getElementById('kpi-live-tags').innerHTML = kprod(liveStudioD2D + PARTNERSHIP.expStudio, liveViniD2D + PARTNERSHIP.expVini);
 
   // ── Expected Go-Live: breakdown by confirmation status (Confirmed vs Upside) ──
   const expByConf = { Confirmed:{arr:0,ents:new Set()}, Upside:{arr:0,ents:new Set()}, Unconfirmed:{arr:0,ents:new Set()} };
@@ -1801,13 +1816,12 @@ function renderOverview(filtered) {
   const expStudio = expRows.filter(r=>r.source!=='vini').reduce((s,r)=>s+r.arr,0);
   const expVini   = expRows.filter(r=>r.source==='vini').reduce((s,r)=>s+r.arr,0);
   const confColors = { Confirmed:'var(--green)', Upside:'var(--amber)', Unconfirmed:'var(--muted)' };
-  document.getElementById('kpi-exp-tags').innerHTML =
-    ['Confirmed','Upside','Unconfirmed']
-      .filter(k => expByConf[k].arr > 0)
-      .map(k => `<span class="tag" style="color:${confColors[k]}">${k}: ${expByConf[k].ents.size} ents (${fmt$(expByConf[k].arr)})</span>`)
-      .join('')
-    + `<span class="tag" style="color:var(--blue);font-weight:700">Studio: ${fmt$(expStudio)}</span>`
-    + `<span class="tag" style="color:var(--green);font-weight:700">Vini: ${fmt$(expVini)}</span>`;
+  document.getElementById('kpi-exp-arr').innerHTML =
+    `<div style="margin-bottom:2px">${expEntCount} enterprises expected</div>` +
+    `<div class="kpi-grp">${kgrp('By Status',
+       ['Confirmed','Upside','Unconfirmed'].filter(k => expByConf[k].arr > 0)
+         .map(k => kpill(k, `${expByConf[k].ents.size} · ${fmt$(expByConf[k].arr)}`, confColors[k])).join(''))}</div>`;
+  document.getElementById('kpi-exp-tags').innerHTML = kprod(expStudio, expVini);
 
   // ── Total LARR breakdown by product (Studio / Vini) ──────────────────────────
   const larrByProduct = p => {
@@ -1816,10 +1830,7 @@ function renderOverview(filtered) {
     const dr = droppedRows.filter(isP).reduce((s,r)=>s+r.arr,0);
     return CURR_BASE_BY_PRODUCT[p] + lv - dr - REVENUE_LOSS_BY_PRODUCT[p] + (p === 'vini' ? PARTNERSHIP.netVini : PARTNERSHIP.netStudio);
   };
-  document.getElementById('kpi-larr-tags').innerHTML =
-    prodFilter === 'All'
-      ? `<span class="tag" style="color:var(--blue);font-weight:700">Studio: ${fmt$(larrByProduct('studio'))}</span><span class="tag" style="color:var(--green);font-weight:700">Vini: ${fmt$(larrByProduct('vini'))}</span>`
-      : `<span class="tag" style="color:${prodFilter==='Vini'?'var(--green)':'var(--blue)'};font-weight:700">${prodFilter}: ${fmt$(totalLARR)}</span>`;
+  document.getElementById('kpi-larr-tags').innerHTML = kprod(larrByProduct('studio'), larrByProduct('vini'));
 
   // ── ARR in Funnel: breakdown by 'In-OB from' ─────────────────────────────────
   const funnelSrcARR = {}, funnelSrcEnts = {};
@@ -1829,19 +1840,20 @@ function renderOverview(filtered) {
     if (!funnelSrcEnts[k]) funnelSrcEnts[k] = new Set();
     funnelSrcEnts[k].add(r.entityName || r.rooftopName || '?');
   });
+  const funnelStudio = funnelRows.filter(r=>r.source!=='vini').reduce((s,r)=>s+r.arr,0);
+  const funnelVini   = funnelRows.filter(r=>r.source==='vini').reduce((s,r)=>s+r.arr,0);
   document.getElementById('kpi-funnel-tags').innerHTML =
-    Object.entries(funnelSrcARR)
-      .sort((a,b) => b[1]-a[1])
-      .map(([k,v])=>`<span class="tag">${k}: ${fmt$(v)}</span>`)
-      .join('');
+    kgrp('By Source', Object.entries(funnelSrcARR).sort((a,b)=>b[1]-a[1]).map(([k,v])=>kpill(k, fmt$(v))).join('')) +
+    kprod(funnelStudio, funnelVini);
 
   // ── Set card values ───────────────────────────────────────────────────────────
   document.getElementById('kpi-larr').textContent     = fmt$(totalLARR);
-  document.getElementById('kpi-larr-sub').innerHTML =
-    `<span class="tag">Base: ${fmt$(baseLARR)}</span>` +
-    `<span class="tag" style="color:var(--green)">+${fmt$(liveARR)} Live</span>` +
-    (revLoss ? `<span class="tag" style="color:var(--red)">−${fmt$(revLoss)} Churn</span>` : '') +
-    (partNet ? `<span class="tag" style="color:${partNet>=0?'var(--green)':'var(--red)'}">${partNet>=0?'+':'−'}${fmt$(Math.abs(partNet))} Partnership</span>` : '');
+  document.getElementById('kpi-larr-sub').innerHTML = kgrp('This Month’s Movement',
+    kpill('Base', fmt$(baseLARR)) +
+    kpill('+ Live', fmt$(liveARR), 'var(--green)') +
+    (revLoss ? kpill('− Churn', fmt$(revLoss), 'var(--red)') : '') +
+    (partNet ? kpill((partNet >= 0 ? '+ ' : '− ') + 'Partnership', fmt$(Math.abs(partNet)), partNet >= 0 ? 'var(--green)' : 'var(--red)') : '')
+  );
 
   // Blocked ARR card — two labeled splits: by product, by projected live date
   document.getElementById('kpi-blocked-arr').textContent = fmt$(blockedARR);
@@ -1855,34 +1867,25 @@ function renderOverview(filtered) {
     else if (d < curMonthStart)    blkPast  += r.arr;   // projection already passed = missed
     else                           blkLater += r.arr;   // beyond next month
   });
-  const subHdr = (t, first) => `<span class="tag" style="width:100%;background:transparent;padding:${first?'2px':'7px'} 0 1px;font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${t}</span>`;
-  const pill = (label, val, color, bold) => val > 0 ? `<span class="tag" style="color:${color}${bold?';font-weight:700':''}">${label}: ${fmt$(val)}</span>` : '';
+  const pillIf = (label, val, color) => val > 0 ? kpill(label, fmt$(val), color) : '';
   document.getElementById('kpi-blocked-tags').innerHTML =
-    subHdr('By Product', true) +
-    `<span class="tag" style="color:var(--blue);font-weight:700">Studio: ${fmt$(blockedStudio)}</span>` +
-    `<span class="tag" style="color:var(--green);font-weight:700">Vini: ${fmt$(blockedVini)}</span>` +
-    subHdr('By Projected Live Date') +
-    pill('This month',  blkThis,  'var(--green)') +
-    pill('Next month',  blkNext,  'var(--amber)') +
-    pill('Beyond next', blkLater, 'var(--red)') +
-    pill('Missed',      blkPast,  '#F97316') +
-    pill('No date',     blkNone,  'var(--text)', true);
+    kgrp('By Projected Live Date',
+      pillIf('This month',  blkThis,  'var(--green)') +
+      pillIf('Next month',  blkNext,  'var(--amber)') +
+      pillIf('Beyond next', blkLater, 'var(--red)') +
+      pillIf('Missed',      blkPast,  '#F97316') +
+      pillIf('No date',     blkNone,  'var(--text)')) +
+    kprod(blockedStudio, blockedVini);
 
-  // Live This Month — ARR big (incl. partnership expansion), with D2D/Partnership split
-  document.getElementById('kpi-live-n').textContent   = fmt$(liveTotal);
-  document.getElementById('kpi-live-arr').innerHTML   = `${liveEntCount} ents · D2D ${fmt$(liveARR)}` +
-    (partExp ? ` · <span style="color:var(--green);font-weight:700">Partnership ${fmt$(partExp)}</span>` : '');
-
-  // Expected Go-Live — ARR big, enterprise count small
+  // Expected Go-Live — headline value (sub/product set above)
   document.getElementById('kpi-exp-n').textContent    = fmt$(expARR);
-  document.getElementById('kpi-exp-arr').textContent  = expEntCount + ' enterprises expected';
 
   // Month-end LARR — headline assumes all projected go live; tag shows confirmed-only
   const meLARRConfirmed = totalLARR + expConfirmedARR;
   document.getElementById('kpi-me-larr').textContent     = fmt$(meLARRConfirmed);
   document.getElementById('kpi-me-larr-sub').textContent = 'If only Confirmed go live';
   document.getElementById('kpi-me-larr-tags').innerHTML =
-    `<span class="tag" style="color:var(--muted)">All projected: ${fmt$(meLARR)}</span>`;
+    kgrp('If All Projected Go Live', kpill('Month-End', fmt$(meLARR), 'var(--text)'));
 
   // Avg OB Time
   document.getElementById('kpi-tat').textContent     = avgTat ? avgTat.toFixed(1) : '—';
@@ -1896,12 +1899,14 @@ function renderOverview(filtered) {
   const agentPills = Object.entries(viniAgent)
     .map(([a,v]) => [a, v.sum/v.n])
     .sort((x,y) => y[1]-x[1])
-    .map(([a,t]) => `<span class="tag" style="font-size:10.5px;color:var(--muted)">${a}: <b style="color:var(--green)">${t.toFixed(1)}d</b></span>`)
+    .map(([a,t]) => kpill(a, t.toFixed(1)+'d', 'var(--green)'))
     .join('');
+  const tatPill = (name,val,color) => `<span class="kpi-pill"><span class="dot" style="background:${color}"></span><span class="pl">${name}</span><span class="pv" style="color:${color}">${val}</span></span>`;
   document.getElementById('kpi-tat-sub').innerHTML =
-    (studioTats.length ? `<span class="tag" style="font-size:12px;font-weight:700;color:var(--blue)">Studio: ${avg(studioTats).toFixed(1)}d</span>` : '') +
-    (viniTats.length   ? `<span class="tag" style="font-size:12px;font-weight:700;color:var(--green)">Vini: ${avg(viniTats).toFixed(1)}d</span>` : '') +
-    (agentPills ? `<span class="tag" style="width:100%;background:transparent;padding:5px 0 1px;font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Vini by Agent</span>` + agentPills : '');
+    kgrp('By Product',
+      (studioTats.length ? tatPill('Studio', avg(studioTats).toFixed(1)+'d', 'var(--blue)') : '') +
+      (viniTats.length   ? tatPill('Vini',   avg(viniTats).toFixed(1)+'d', 'var(--green)') : '')) +
+    (agentPills ? `<div class="kpi-prod">${kgrp('Vini by Agent', agentPills)}</div>` : '');
 
   // ARR in Funnel — ARR big, enterprise count small
   document.getElementById('kpi-funnel-arr').textContent = fmt$(funnelARR);
