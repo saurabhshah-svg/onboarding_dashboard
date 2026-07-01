@@ -65,7 +65,8 @@ a:hover { text-decoration:underline; }
 /* KPI grid */
 .kpi-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:12px; margin-bottom:20px; }
 .kpi-grid-5 { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px; }
-.kpi-card { background:var(--card); border-radius:12px; padding:16px; box-shadow:var(--shadow); border-left:4px solid var(--blue); }
+.kpi-card { background:var(--card); border-radius:12px; padding:16px; box-shadow:var(--shadow); border-left:4px solid var(--blue); display:flex; flex-direction:column; }
+.kpi-tags.kpi-bottom { margin-top:auto; padding-top:8px; }   /* pins the By-Product block to the bottom so it aligns across cards */
 .kpi-card.card-blue { border-left-color:var(--blue); }
 .kpi-card.card-green { border-left-color:var(--green); }
 .kpi-card.card-amber { border-left-color:var(--amber); }
@@ -267,41 +268,43 @@ const EMBEDDED_DATA = {
       <div class="kpi-label">Total LARR</div>
       <div class="kpi-value" id="kpi-larr">—</div>
       <div class="kpi-tags" id="kpi-larr-sub"></div>
-      <div class="kpi-tags" id="kpi-larr-tags"></div>
+      <div class="kpi-tags kpi-bottom" id="kpi-larr-tags"></div>
     </div>
     <div class="kpi-card card-green">
       <div class="kpi-label">Live This Month</div>
       <div class="kpi-value" id="kpi-live-n">—</div>
       <div class="kpi-sub" id="kpi-live-arr">—</div>
-      <div class="kpi-tags" id="kpi-live-tags"></div>
+      <div class="kpi-tags kpi-bottom" id="kpi-live-tags"></div>
     </div>
     <div class="kpi-card card-amber">
       <div class="kpi-label">Expected Go-Live<span class="kpi-info" tabindex="0">i<span class="kpi-tip">Sum of ARR for accounts in <b>OB Initiated / In Implementation</b> stage (across all sheets) with a <b>Projected Live Date in the current month</b>. May include both Confirmed and Upside accounts.</span></span></div>
       <div class="kpi-value" id="kpi-exp-n">—</div>
       <div class="kpi-sub" id="kpi-exp-arr">—</div>
-      <div class="kpi-tags" id="kpi-exp-tags"></div>
+      <div class="kpi-tags kpi-bottom" id="kpi-exp-tags"></div>
     </div>
     <div class="kpi-card card-blue">
       <div class="kpi-label">Expected Month-End LARR</div>
       <div class="kpi-value" id="kpi-me-larr">—</div>
       <div class="kpi-sub" id="kpi-me-larr-sub">—</div>
-      <div class="kpi-tags" id="kpi-me-larr-tags"></div>
+      <div class="kpi-tags kpi-bottom" id="kpi-me-larr-tags"></div>
     </div>
     <div class="kpi-card card-amber">
       <div class="kpi-label">Blocked ARR (Upside)</div>
       <div class="kpi-value" id="kpi-blocked-arr">—</div>
-      <div class="kpi-tags" id="kpi-blocked-tags"></div>
+      <div class="kpi-sub" id="kpi-blocked-sub"></div>
+      <div class="kpi-tags kpi-bottom" id="kpi-blocked-tags"></div>
     </div>
     <div class="kpi-card card-purple">
       <div class="kpi-label">Avg OB Time (days)</div>
       <div class="kpi-value" id="kpi-tat">—</div>
       <div class="kpi-tags" id="kpi-tat-sub"></div>
+      <div class="kpi-tags kpi-bottom" id="kpi-tat-prod"></div>
     </div>
     <div class="kpi-card card-blue">
       <div class="kpi-label">ARR in Funnel</div>
       <div class="kpi-value" id="kpi-funnel-arr">—</div>
       <div class="kpi-sub" id="kpi-funnel-sub">—</div>
-      <div class="kpi-tags" id="kpi-funnel-tags"></div>
+      <div class="kpi-tags kpi-bottom" id="kpi-funnel-tags"></div>
     </div>
 
   </div>
@@ -312,29 +315,26 @@ const EMBEDDED_DATA = {
     <div id="last-month-bridge"></div>
   </div>
 
-  <!-- Pipeline table + Blocked Reasons side by side -->
-  <div style="display:flex;gap:20px;margin-bottom:20px;align-items:flex-start">
-    <div class="section" style="flex:0 0 auto;min-width:0">
-      <div class="section-title">Pipeline by Source</div>
-      <div class="table-wrap">
-        <table id="pipeline-table">
-          <thead>
-            <tr>
-              <th>Funnel</th>
-              <th class="td-right">Total ARR in Funnel</th>
-              <th class="td-right">ARR Went Live This Month</th>
-            </tr>
-          </thead>
-          <tbody id="pipeline-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="section" style="flex:1 1 0;min-width:0">
-      <div class="section-title">Blocked Reasons</div>
-      <div style="margin-bottom:12px"><strong style="font-size:12px;color:var(--muted)">STUDIO</strong></div>
-      <div class="chart-wrap-sm"><canvas id="blocked-studio-chart"></canvas></div>
-      <div style="margin-top:16px;margin-bottom:12px"><strong style="font-size:12px;color:var(--muted)">VINI</strong></div>
-      <div class="chart-wrap-sm"><canvas id="blocked-vini-chart"></canvas></div>
+  <!-- Scheduled to Go-Live Today -->
+  <div class="section" style="margin-bottom:20px">
+    <div class="section-title">Scheduled to Go-Live Today <span id="sched-today-meta" style="font-weight:500;color:var(--muted);font-size:12px"></span></div>
+    <div id="sched-today"></div>
+  </div>
+
+  <!-- Pipeline by Source -->
+  <div class="section" style="margin-bottom:20px">
+    <div class="section-title">Pipeline by Source</div>
+    <div class="table-wrap">
+      <table id="pipeline-table">
+        <thead>
+          <tr>
+            <th>Funnel</th>
+            <th class="td-right">Total ARR in Funnel</th>
+            <th class="td-right">ARR Went Live This Month</th>
+          </tr>
+        </thead>
+        <tbody id="pipeline-tbody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -1842,17 +1842,19 @@ function renderOverview(filtered) {
   });
   const funnelStudio = funnelRows.filter(r=>r.source!=='vini').reduce((s,r)=>s+r.arr,0);
   const funnelVini   = funnelRows.filter(r=>r.source==='vini').reduce((s,r)=>s+r.arr,0);
-  document.getElementById('kpi-funnel-tags').innerHTML =
-    kgrp('By Source', Object.entries(funnelSrcARR).sort((a,b)=>b[1]-a[1]).map(([k,v])=>kpill(k, fmt$(v))).join('')) +
-    kprod(funnelStudio, funnelVini);
+  document.getElementById('kpi-funnel-sub').innerHTML =
+    `<div style="margin-bottom:2px">${uniqEnts(funnelRows)} enterprises in funnel</div>` +
+    `<div class="kpi-grp">${kgrp('By Source', Object.entries(funnelSrcARR).sort((a,b)=>b[1]-a[1]).map(([k,v])=>kpill(k, fmt$(v))).join(''))}</div>`;
+  document.getElementById('kpi-funnel-tags').innerHTML = kprod(funnelStudio, funnelVini);
 
   // ── Set card values ───────────────────────────────────────────────────────────
   document.getElementById('kpi-larr').textContent     = fmt$(totalLARR);
   document.getElementById('kpi-larr-sub').innerHTML = kgrp('This Month’s Movement',
     kpill('Base', fmt$(baseLARR)) +
-    kpill('+ Live', fmt$(liveARR), 'var(--green)') +
-    (revLoss ? kpill('− Churn', fmt$(revLoss), 'var(--red)') : '') +
-    (partNet ? kpill((partNet >= 0 ? '+ ' : '− ') + 'Partnership', fmt$(Math.abs(partNet)), partNet >= 0 ? 'var(--green)' : 'var(--red)') : '')
+    kpill('+ Live (D2D)', fmt$(liveARR), 'var(--green)') +
+    (partExp ? kpill('+ Partnership', fmt$(partExp), 'var(--green)') : '') +
+    kpill('− Churn (D2D)', fmt$(revLoss + droppedARR), 'var(--red)') +
+    (partChurn ? kpill('− Churn (Ptnr)', fmt$(partChurn), 'var(--red)') : '')
   );
 
   // Blocked ARR card — two labeled splits: by product, by projected live date
@@ -1868,14 +1870,14 @@ function renderOverview(filtered) {
     else                           blkLater += r.arr;   // beyond next month
   });
   const pillIf = (label, val, color) => val > 0 ? kpill(label, fmt$(val), color) : '';
-  document.getElementById('kpi-blocked-tags').innerHTML =
+  document.getElementById('kpi-blocked-sub').innerHTML =
     kgrp('By Projected Live Date',
       pillIf('This month',  blkThis,  'var(--green)') +
       pillIf('Next month',  blkNext,  'var(--amber)') +
       pillIf('Beyond next', blkLater, 'var(--red)') +
       pillIf('Missed',      blkPast,  '#F97316') +
-      pillIf('No date',     blkNone,  'var(--text)')) +
-    kprod(blockedStudio, blockedVini);
+      pillIf('No date',     blkNone,  'var(--text)'));
+  document.getElementById('kpi-blocked-tags').innerHTML = kprod(blockedStudio, blockedVini);
 
   // Expected Go-Live — headline value (sub/product set above)
   document.getElementById('kpi-exp-n').textContent    = fmt$(expARR);
@@ -1902,23 +1904,55 @@ function renderOverview(filtered) {
     .map(([a,t]) => kpill(a, t.toFixed(1)+'d', 'var(--green)'))
     .join('');
   const tatPill = (name,val,color) => `<span class="kpi-pill"><span class="dot" style="background:${color}"></span><span class="pl">${name}</span><span class="pv" style="color:${color}">${val}</span></span>`;
-  document.getElementById('kpi-tat-sub').innerHTML =
-    kgrp('By Product',
+  document.getElementById('kpi-tat-sub').innerHTML = agentPills ? kgrp('Vini by Agent', agentPills) : '';
+  document.getElementById('kpi-tat-prod').innerHTML =
+    `<div class="kpi-prod"><div class="kpi-grp-hdr">By Product</div><div class="pillrow">` +
       (studioTats.length ? tatPill('Studio', avg(studioTats).toFixed(1)+'d', 'var(--blue)') : '') +
-      (viniTats.length   ? tatPill('Vini',   avg(viniTats).toFixed(1)+'d', 'var(--green)') : '')) +
-    (agentPills ? `<div class="kpi-prod">${kgrp('Vini by Agent', agentPills)}</div>` : '');
+      (viniTats.length   ? tatPill('Vini',   avg(viniTats).toFixed(1)+'d', 'var(--green)') : '') +
+    `</div></div>`;
 
-  // ARR in Funnel — ARR big, enterprise count small
+  // ARR in Funnel — headline value (sub/product set above)
   document.getElementById('kpi-funnel-arr').textContent = fmt$(funnelARR);
-  document.getElementById('kpi-funnel-sub').textContent = uniqEnts(funnelRows) + ' enterprises in funnel';
 
   // Revenue at Risk card removed (Task 3)
 
   renderLastMonthBridge();
+  renderScheduledToday(filtered);
   renderPipelineTable(filtered);
   renderDoDChart(filtered);
-  renderBlockedCharts(filtered);
   renderPocPendency(filtered);
+}
+
+// Scheduled to Go-Live Today — Studio / Vini tables (same content as the Email view).
+function renderScheduledToday(filtered) {
+  const el = document.getElementById('sched-today'); if (!el) return;
+  const isStudio = r => r.source!=='vini', isVini = r => r.source==='vini';
+  const isTod = d => d && d.getFullYear()===CY && d.getMonth()===CM && d.getDate()===TODAY.getDate();
+  const sum = a => a.reduce((s,r)=>s+r.arr,0);
+  const uniq = rows => new Set(rows.map(r=>r.entityName||r.rooftopName||'?')).size;
+  const todayRows = filtered.filter(r => isInFunnel(r) && isTod(r.projectionDate));
+  document.getElementById('sched-today-meta').textContent = `— ${uniq(todayRows)} ent · ${fmt$(sum(todayRows))}`;
+  if (!todayRows.length) { el.innerHTML = '<div style="padding:14px;color:var(--muted);font-size:13px">No accounts scheduled to go live today.</div>'; return; }
+  const grp = (items, withProduct) => {
+    const m = {};
+    items.forEach(r => { const e=r.entityName||r.rooftopName||'—'; const g=m[e]||(m[e]={ent:e,n:0,arr:0,prod:new Set(),poc:new Set()}); g.n++; g.arr+=r.arr; if(withProduct&&r.product) g.prod.add(r.product); if(r.obPoc) g.poc.add(r.obPoc); });
+    return Object.values(m).sort((a,b)=>b.arr-a.arr);
+  };
+  const th = (t,a)=>`<th style="padding:8px 10px;text-align:${a||'left'};font-size:11px;text-transform:uppercase;color:var(--muted)">${t}</th>`;
+  const cell = (v,a,bold)=>`<td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:${a||'left'};${bold?'font-weight:600;color:var(--text)':'color:var(--muted)'}">${v}</td>`;
+  const secHead = (label,color,n,arr)=>`<div style="display:flex;justify-content:space-between;align-items:center;background:${color};color:#fff;padding:9px 14px;border-radius:8px 8px 0 0;font-weight:700;font-size:14px"><span>${label}</span><span style="font-size:12px;font-weight:600">${n} ent · ${fmt$(arr)}</span></div>`;
+  const studioG = grp(todayRows.filter(isStudio), true);
+  const viniG   = grp(todayRows.filter(isVini), false);
+  const studioTable = studioG.length
+    ? `<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--border);border-top:none"><thead><tr style="background:#F8FAFC">${th('Enterprise')}${th('Rooftops','center')}${th('Product')}${th('ARR','right')}${th('OB POC')}</tr></thead><tbody>${studioG.map(g=>`<tr>${cell(g.ent,'left',true)}${cell(g.n,'center',true)}${cell([...g.prod].join(', ')||'—')}${cell(fmt$(g.arr),'right',true)}${cell([...g.poc].join(', ')||'—')}</tr>`).join('')}</tbody></table>`
+    : `<div style="border:1px solid var(--border);border-top:none;padding:12px;color:var(--muted);font-size:13px">No Studio accounts scheduled today.</div>`;
+  const viniTable = viniG.length
+    ? `<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--border);border-top:none"><thead><tr style="background:#F8FAFC">${th('Enterprise')}${th('Agents','center')}${th('ARR','right')}${th('OB POC')}</tr></thead><tbody>${viniG.map(g=>`<tr>${cell(g.ent,'left',true)}${cell(g.n,'center',true)}${cell(fmt$(g.arr),'right',true)}${cell([...g.poc].join(', ')||'—')}</tr>`).join('')}</tbody></table>`
+    : `<div style="border:1px solid var(--border);border-top:none;padding:12px;color:var(--muted);font-size:13px">No Vini accounts scheduled today.</div>`;
+  el.innerHTML = `<div style="display:flex;gap:16px;flex-wrap:wrap">
+    <div style="flex:1 1 340px;min-width:0">${secHead('Studio','#1e40af',studioG.length,sum(todayRows.filter(isStudio)))}${studioTable}</div>
+    <div style="flex:1 1 340px;min-width:0">${secHead('Vini','#065f46',viniG.length,sum(todayRows.filter(isVini)))}${viniTable}</div>
+  </div>`;
 }
 
 // Last-month LARR walk (bridge), live-computed each load. Whole-company (all-up).
