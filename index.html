@@ -628,16 +628,53 @@ function computeRevenueLoss(churnRows) {
 }
 
 // D2D churn for a specific YYYY-MM from the raw churn rows (excludes Reseller, like computeRevenueLoss).
+// Returns { total, studio, vini }.
 function churnD2DForMonth(ym) {
-  let total = 0;
+  const out = { total: 0, studio: 0, vini: 0 };
   churnRowsRaw.forEach(r => {
     if ((r[4] || '').trim() !== ym) return;
     const custType = (r[7] || '').trim().toLowerCase();
     const segment  = (r[2] || '').trim().toLowerCase();
     if (custType === 'reseller' || segment === 'reseller') return;
-    total += parseFloat(String(r[3] || '').replace(/[^0-9.\-]/g, '')) || 0;
+    const arr = parseFloat(String(r[3] || '').replace(/[^0-9.\-]/g, '')) || 0;
+    out.total += arr;
+    if ((r[5] || '').trim().toLowerCase() === 'vini') out.vini += arr; else out.studio += arr;
   });
-  return total;
+  return out;
+}
+
+// Last month's LARR walk (shared by the bridge display and the current-month base).
+// Start = the static prior-month anchor (BASE_LARR); movements are live-computed.
+function lastMonthWalk() {
+  const lastM = CM === 0 ? 11 : CM - 1, lastY = CM === 0 ? CY - 1 : CY;
+  const prevM = lastM === 0 ? 11 : lastM - 1, prevY = lastM === 0 ? lastY - 1 : lastY;
+  const ym = lastY + '-' + String(lastM + 1).padStart(2, '0');
+  const inMo = (d,m,y) => d && d.getMonth()===m && d.getFullYear()===y;
+  const sum  = a => a.reduce((s,r)=>s+r.arr,0);
+  const isV = r => r.source==='vini', isS = r => r.source!=='vini';
+  const live = allRows.filter(r => isLive(r) && inMo(r.goLiveDate,lastM,lastY));
+  const addD2Dstudio = sum(live.filter(isS)), addD2Dvini = sum(live.filter(isV));
+  const ch = churnD2DForMonth(ym);
+  const p = PARTNERSHIP_PREV;
+  const endStudio = BASE_LARR_BY_PRODUCT.studio + addD2Dstudio + p.expStudio - ch.studio - p.churnStudio;
+  const endVini   = BASE_LARR_BY_PRODUCT.vini   + addD2Dvini   + p.expVini   - ch.vini   - p.churnVini;
+  return {
+    lastM, lastY, prevM, prevY,
+    startTotal: BASE_LARR,
+    addD2D: addD2Dstudio + addD2Dvini, addRes: p.exp, addTotal: addD2Dstudio + addD2Dvini + p.exp,
+    chD2D: ch.total, chRes: p.churn, chTotal: ch.total + p.churn,
+    endTotal: endStudio + endVini, endStudio, endVini
+  };
+}
+
+// Current base = last month's closing LARR (the value the bridge ends on). Set at load.
+let CURR_BASE = BASE_LARR;
+let CURR_BASE_BY_PRODUCT = { studio: BASE_LARR_BY_PRODUCT.studio, vini: BASE_LARR_BY_PRODUCT.vini };
+function computeCurrBase() {
+  if (!allRows.length) return;
+  const w = lastMonthWalk();
+  CURR_BASE = w.endTotal;
+  CURR_BASE_BY_PRODUCT = { studio: w.endStudio, vini: w.endVini };
 }
 
 // ─── Business logic ──────────────────────────────────────────
@@ -1095,6 +1132,7 @@ async function loadAllData() {
     studioRows = [...parseAmer(amerCSV), ...parseApacEmea(apacCSV)];
     allRows = [...viniRows, ...studioRows];
     attachAE(allRows);   // join AE / AE-Manager by Enterprise ID
+    computeCurrBase();   // roll base to last month's close (bridge end)
 
     populateFilterDropdowns();
     renderAll();
@@ -1393,7 +1431,7 @@ function renderSlack(rows) {
   const liveARR = sum(liveRows), expARR = sum(expRows);
   const expConf = sum(expRows.filter(r => r.currentMonthConf === 'Confirmed'));  // confirmed-to-go-live only
   const liveTotal = liveARR + PARTNERSHIP.exp;   // Live this month incl. partnership expansion
-  const totalLARR = BASE_LARR + liveARR - sum(dropRows) - REVENUE_LOSS + PARTNERSHIP.net;
+  const totalLARR = CURR_BASE + liveARR - sum(dropRows) - REVENUE_LOSS + PARTNERSHIP.net;
   const meLARR = totalLARR + expConf;       // Exp. Month-End = already live + confirmed
   const newLiveExp = liveTotal + expConf;   // already live this month (incl partnership) + confirmed
   const pct = (v,t) => t ? Math.round(v/t*100) : 0;
@@ -1493,13 +1531,13 @@ function renderDisplay(rows) {
   const obYestRows = rows.filter(r => isYest(r.obCallDate));
   const liveARR=sum(liveRows), furtherARR=sum(furtherRows), todayARR=sum(todayRows), blockedARR=sum(blockedRows), funnelARR=sum(funnelRows);
   const liveTotal = liveARR + PARTNERSHIP.exp;   // incl. partnership expansion
-  const totalLARR = BASE_LARR + liveARR - sum(dropRows) - REVENUE_LOSS + PARTNERSHIP.net;
+  const totalLARR = CURR_BASE + liveARR - sum(dropRows) - REVENUE_LOSS + PARTNERSHIP.net;
   const meLARR = totalLARR + sum(expRows);
   const expConf = sum(expRows.filter(r=>r.currentMonthConf==='Confirmed'));
   const furtherConf = sum(furtherRows.filter(r=>r.currentMonthConf==='Confirmed'));
   const meLARRConf = totalLARR + expConf;
-  const larrStudio = BASE_LARR_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
-  const larrVini   = BASE_LARR_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
+  const larrStudio = CURR_BASE_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
+  const larrVini   = CURR_BASE_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
   const stTat = avg(rows.filter(isStudio).map(r=>r.liveTat).filter(x=>x>0));
   const viTat = avg(rows.filter(isVini).map(r=>r.liveTat).filter(x=>x>0));
   const avgTat = avg(rows.map(r=>r.liveTat).filter(x=>x>0));
@@ -1602,7 +1640,7 @@ function renderEmailView(rows) {
   const blockedRows = rows.filter(r => r.currentMonthConf === 'Upside');
   const liveARR=sum(liveRows), dropARR=sum(dropRows), expARR=sum(expRows), funnelARR=sum(funnelRows), blockedARR=sum(blockedRows);
   const liveTotal  = liveARR + PARTNERSHIP.exp;   // incl. partnership expansion
-  const totalLARR  = BASE_LARR + liveARR - dropARR - REVENUE_LOSS + PARTNERSHIP.net;
+  const totalLARR  = CURR_BASE + liveARR - dropARR - REVENUE_LOSS + PARTNERSHIP.net;
   const expConfARR = sum(expRows.filter(isConfirmed));
   const meLARR     = totalLARR + expARR;
   const meLARRConf = totalLARR + expConfARR;
@@ -1620,8 +1658,8 @@ function renderEmailView(rows) {
   const heading = TODAY.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 
   const fmtC = n => { n = Math.round(n); const a = Math.abs(n); return a>=1e6 ? '$'+(n/1e6).toFixed(2)+'M' : a>=1e3 ? '$'+(n/1e3).toFixed(1)+'K' : '$'+n; };
-  const larrStudio = BASE_LARR_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
-  const larrVini   = BASE_LARR_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
+  const larrStudio = CURR_BASE_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
+  const larrVini   = CURR_BASE_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
 
   // Compact KPI card — pass bg/vcol to highlight a card
   // Label reserves 2 lines (min-height) and bottom-aligns, so the number always
@@ -1708,9 +1746,9 @@ function renderOverview(filtered) {
   // Base ARR + churn scoped to the current Product filter so the LARR card is
   // correct at product level (base/churn only split by product, not region/POC).
   const prodFilter = filters.overview.product || 'All';
-  const baseLARR = prodFilter === 'Vini'   ? BASE_LARR_BY_PRODUCT.vini
-                 : prodFilter === 'Studio' ? BASE_LARR_BY_PRODUCT.studio
-                 : BASE_LARR;
+  const baseLARR = prodFilter === 'Vini'   ? CURR_BASE_BY_PRODUCT.vini
+                 : prodFilter === 'Studio' ? CURR_BASE_BY_PRODUCT.studio
+                 : CURR_BASE;
   const revLoss  = prodFilter === 'Vini'   ? REVENUE_LOSS_BY_PRODUCT.vini
                  : prodFilter === 'Studio' ? REVENUE_LOSS_BY_PRODUCT.studio
                  : REVENUE_LOSS;
@@ -1776,7 +1814,7 @@ function renderOverview(filtered) {
     const isP = r => p === 'vini' ? r.source === 'vini' : r.source !== 'vini';
     const lv = liveRows.filter(isP).reduce((s,r)=>s+r.arr,0);
     const dr = droppedRows.filter(isP).reduce((s,r)=>s+r.arr,0);
-    return BASE_LARR_BY_PRODUCT[p] + lv - dr - REVENUE_LOSS_BY_PRODUCT[p] + (p === 'vini' ? PARTNERSHIP.netVini : PARTNERSHIP.netStudio);
+    return CURR_BASE_BY_PRODUCT[p] + lv - dr - REVENUE_LOSS_BY_PRODUCT[p] + (p === 'vini' ? PARTNERSHIP.netVini : PARTNERSHIP.netStudio);
   };
   document.getElementById('kpi-larr-tags').innerHTML =
     prodFilter === 'All'
@@ -1884,36 +1922,25 @@ function renderOverview(filtered) {
 function renderLastMonthBridge() {
   const el = document.getElementById('last-month-bridge');
   if (!el) return;
-  const lastM = CM === 0 ? 11 : CM - 1, lastY = CM === 0 ? CY - 1 : CY;       // previous calendar month
-  const prevM = lastM === 0 ? 11 : lastM - 1, prevY = lastM === 0 ? lastY - 1 : lastY;  // month before that
-  const ym = lastY + '-' + String(lastM + 1).padStart(2, '0');
+  const w = lastMonthWalk();
   const mLab = (m,y) => new Date(y, m, 1).toLocaleString('en-US',{month:'short'}) + " '" + String(y).slice(2);
-  const mS   = new Date(lastY, lastM, 1).toLocaleString('en-US',{month:'short'});
-  const inMo = (d,m,y) => d && d.getMonth()===m && d.getFullYear()===y;
-  const sum  = a => a.reduce((s,r)=>s+r.arr,0);
-  // New Addition = D2D go-lives (OB sheets, 3 tabs) + Partnership expansion (RAG col R positives, ×12)
-  const addD2D  = sum(allRows.filter(r=>isLive(r) && inMo(r.goLiveDate,lastM,lastY)));
-  const addRes  = PARTNERSHIP_PREV.exp;
-  const addTot  = addD2D + addRes;
-  // Churn = D2D churn (CS churn/contraction tab, Reseller excluded) + Partnership churn (RAG col R negatives, ×12)
-  const chD2D   = churnD2DForMonth(ym);
-  const chRes   = PARTNERSHIP_PREV.churn;
-  const chTot   = chD2D + chRes;
-  const start = BASE_LARR;
-  const end   = start + addTot - chTot;
+  const mS   = new Date(w.lastY, w.lastM, 1).toLocaleString('en-US',{month:'short'});
+  const addD2D = w.addD2D, addRes = w.addRes, addTot = w.addTotal;
+  const chD2D = w.chD2D, chRes = w.chRes, chTot = w.chTotal;
+  const start = w.startTotal, end = w.endTotal;
 
   document.getElementById('last-month-bridge-title').innerHTML =
-    `Last Month — LARR Walk <span style="font-weight:500;color:var(--muted);font-size:12px">— ${mLab(prevM,prevY)} End → ${mLab(lastM,lastY)} End · all products</span>`;
+    `Last Month — LARR Walk <span style="font-weight:500;color:var(--muted);font-size:12px">— ${mLab(w.prevM,w.prevY)} End → ${mLab(w.lastM,w.lastY)} End · all products</span>`;
   const anchor = (lbl,val) => `<div style="flex:1 1 160px;min-width:160px;background:#0F2350;color:#fff;border-radius:10px;padding:12px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;opacity:.7">${lbl}</div><div style="font-size:20px;font-weight:800;margin-top:3px">${fmt$(val)}</div></div>`;
   const combo = (lbl,total,pos,d2d,part) => `<div style="flex:1 1 220px;min-width:220px;background:#fff;border:1px solid var(--border);border-left:4px solid ${pos?'var(--green)':'var(--red)'};border-radius:10px;padding:12px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${lbl}</div><div style="font-size:19px;font-weight:800;margin-top:3px;color:${pos?'var(--green)':'var(--red)'}">${pos?'+':'−'}${fmt$(Math.abs(total))}</div><div style="font-size:11px;color:var(--muted);margin-top:5px">D2D <b style="color:var(--text)">${fmt$(d2d)}</b> &nbsp;·&nbsp; Partnership <b style="color:var(--text)">${fmt$(part)}</b></div></div>`;
   const arrow = `<div style="display:flex;align-items:center;color:var(--faint);font-size:20px;font-weight:700;padding:0 2px">→</div>`;
   el.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch">
-    ${anchor(mLab(prevM,prevY)+' End LARR', start)}
+    ${anchor(mLab(w.prevM,w.prevY)+' End LARR', start)}
     ${arrow}
     ${combo(mS+' New Addition', addTot, true, addD2D, addRes)}
     ${combo(mS+' Churn', chTot, false, chD2D, chRes)}
     ${arrow}
-    ${anchor(mLab(lastM,lastY)+' End LARR', end)}
+    ${anchor(mLab(w.lastM,w.lastY)+' End LARR', end)}
   </div>`;
 }
 
