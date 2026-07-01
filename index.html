@@ -1888,29 +1888,30 @@ function renderLastMonthBridge() {
   const prevM = lastM === 0 ? 11 : lastM - 1, prevY = lastM === 0 ? lastY - 1 : lastY;  // month before that
   const ym = lastY + '-' + String(lastM + 1).padStart(2, '0');
   const mLab = (m,y) => new Date(y, m, 1).toLocaleString('en-US',{month:'short'}) + " '" + String(y).slice(2);
+  const mS   = new Date(lastY, lastM, 1).toLocaleString('en-US',{month:'short'});
   const inMo = (d,m,y) => d && d.getMonth()===m && d.getFullYear()===y;
   const sum  = a => a.reduce((s,r)=>s+r.arr,0);
-  const liveD2D = sum(allRows.filter(r=>isLive(r) && inMo(r.goLiveDate,lastM,lastY)));
-  const dropD2D = sum(allRows.filter(r=>isDropped(r) && (inMo(r.goLiveDate,lastM,lastY)||inMo(r.projectionDate,lastM,lastY))));
-  const newLiveD2D = liveD2D - dropD2D;             // net of OB-stage drops
-  const churnD2D   = churnD2DForMonth(ym);
-  const newLiveRes = PARTNERSHIP_PREV.exp;          // prior-month reseller movement (Delta M-2→M-1)
-  const churnRes   = PARTNERSHIP_PREV.churn;
+  // New Addition = D2D go-lives (OB sheets, 3 tabs) + Partnership expansion (RAG col R positives, ×12)
+  const addD2D  = sum(allRows.filter(r=>isLive(r) && inMo(r.goLiveDate,lastM,lastY)));
+  const addRes  = PARTNERSHIP_PREV.exp;
+  const addTot  = addD2D + addRes;
+  // Churn = D2D churn (CS churn/contraction tab, Reseller excluded) + Partnership churn (RAG col R negatives, ×12)
+  const chD2D   = churnD2DForMonth(ym);
+  const chRes   = PARTNERSHIP_PREV.churn;
+  const chTot   = chD2D + chRes;
   const start = BASE_LARR;
-  const end   = start + newLiveD2D + newLiveRes - churnD2D - churnRes;
+  const end   = start + addTot - chTot;
 
   document.getElementById('last-month-bridge-title').innerHTML =
     `Last Month — LARR Walk <span style="font-weight:500;color:var(--muted);font-size:12px">— ${mLab(prevM,prevY)} End → ${mLab(lastM,lastY)} End · all products</span>`;
-  const anchor = (lbl,val) => `<div style="flex:1 1 150px;min-width:150px;background:#0F2350;color:#fff;border-radius:10px;padding:12px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;opacity:.7">${lbl}</div><div style="font-size:20px;font-weight:800;margin-top:3px">${fmt$(val)}</div></div>`;
-  const step = (lbl,val,pos) => `<div style="flex:1 1 130px;min-width:130px;background:#fff;border:1px solid var(--border);border-left:4px solid ${pos?'var(--green)':'var(--red)'};border-radius:10px;padding:12px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${lbl}</div><div style="font-size:18px;font-weight:800;margin-top:3px;color:${pos?'var(--green)':'var(--red)'}">${pos?'+':'−'}${fmt$(Math.abs(val))}</div></div>`;
+  const anchor = (lbl,val) => `<div style="flex:1 1 160px;min-width:160px;background:#0F2350;color:#fff;border-radius:10px;padding:12px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;opacity:.7">${lbl}</div><div style="font-size:20px;font-weight:800;margin-top:3px">${fmt$(val)}</div></div>`;
+  const combo = (lbl,total,pos,d2d,part) => `<div style="flex:1 1 220px;min-width:220px;background:#fff;border:1px solid var(--border);border-left:4px solid ${pos?'var(--green)':'var(--red)'};border-radius:10px;padding:12px 14px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${lbl}</div><div style="font-size:19px;font-weight:800;margin-top:3px;color:${pos?'var(--green)':'var(--red)'}">${pos?'+':'−'}${fmt$(Math.abs(total))}</div><div style="font-size:11px;color:var(--muted);margin-top:5px">D2D <b style="color:var(--text)">${fmt$(d2d)}</b> &nbsp;·&nbsp; Partnership <b style="color:var(--text)">${fmt$(part)}</b></div></div>`;
   const arrow = `<div style="display:flex;align-items:center;color:var(--faint);font-size:20px;font-weight:700;padding:0 2px">→</div>`;
   el.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch">
     ${anchor(mLab(prevM,prevY)+' End LARR', start)}
     ${arrow}
-    ${step('New Live (D2D)', newLiveD2D, true)}
-    ${step('New Live (Reseller)', newLiveRes, true)}
-    ${step('Churn (D2D)', churnD2D, false)}
-    ${step('Churn (Reseller)', churnRes, false)}
+    ${combo(mS+' New Addition', addTot, true, addD2D, addRes)}
+    ${combo(mS+' Churn', chTot, false, chD2D, chRes)}
     ${arrow}
     ${anchor(mLab(lastM,lastY)+' End LARR', end)}
   </div>`;
