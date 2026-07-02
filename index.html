@@ -65,6 +65,7 @@ a:hover { text-decoration:underline; }
 /* KPI grid */
 .kpi-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:12px; margin-bottom:20px; }
 .kpi-grid-5 { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px; }
+.kpi-grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
 .kpi-card { background:var(--card); border-radius:12px; padding:16px; box-shadow:var(--shadow); border-left:4px solid var(--blue); display:flex; flex-direction:column; }
 .kpi-tags.kpi-bottom { margin-top:auto; padding-top:8px; }   /* pins the By-Product block to the bottom so it aligns across cards */
 .kpi-card.card-blue { border-left-color:var(--blue); }
@@ -359,7 +360,7 @@ const EMBEDDED_DATA = {
 
 <!-- STUDIO TAB -->
 <div id="tab-studio" class="main">
-  <div class="kpi-grid-5" id="st-kpi-grid">
+  <div class="kpi-grid-4" id="st-kpi-grid">
     <div class="kpi-card card-green">
       <div class="kpi-label">Live This Month</div>
       <div class="kpi-value" id="st-kpi-live-n">—</div>
@@ -376,29 +377,25 @@ const EMBEDDED_DATA = {
       <div class="kpi-sub" id="st-kpi-funnel-n">—</div>
     </div>
     <div class="kpi-card card-purple">
-      <div class="kpi-label">Avg OB Time</div>
+      <div class="kpi-label">Avg OB Time (days)</div>
       <div class="kpi-value" id="st-kpi-tat">—</div>
-      <div class="kpi-sub">days</div>
-    </div>
-    <div class="kpi-card card-red">
-      <div class="kpi-label">Revenue at Risk</div>
-      <div class="kpi-value" id="st-kpi-risk">—</div>
-      <div class="kpi-sub" id="st-kpi-risk-n">—</div>
+      <div class="kpi-sub" id="st-kpi-tat-sub">—</div>
     </div>
   </div>
 
   <div class="section-grid section-grid-3" style="margin-bottom:20px">
     <div class="section">
-      <div class="section-title">Stage Mix</div>
-      <div class="chart-wrap"><canvas id="st-stage-donut"></canvas></div>
+      <div class="section-title">OB Initiated — by Sub Stage</div>
+      <div class="chart-wrap"><canvas id="st-substage-donut"></canvas></div>
     </div>
     <div class="section">
-      <div class="section-title">Monthly Go-Lives (last 6 mo)</div>
-      <div class="chart-wrap"><canvas id="st-monthly-line"></canvas></div>
+      <div class="section-title">OB Initiated — by OB POC</div>
+      <div class="chart-wrap"><canvas id="st-obinit-poc-bar"></canvas></div>
     </div>
     <div class="section">
-      <div class="section-title">ARR by POC</div>
-      <div class="chart-wrap"><canvas id="st-arr-poc-bar"></canvas></div>
+      <div class="section-title">Go-Lives by OB POC <span style="font-weight:500;color:var(--muted);font-size:12px">— accounts went live</span></div>
+      <div id="st-golive-toggle" style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap"></div>
+      <div class="chart-wrap"><canvas id="st-golive-poc-bar"></canvas></div>
     </div>
   </div>
 
@@ -626,14 +623,21 @@ const CUR_YM = CY + '-' + String(CM + 1).padStart(2, '0');  // e.g. "2026-06" �
 // IMPORTANT: Reseller/Partnership churn (Col H Customer Type = 'Reseller', or Col C Segment =
 // 'Reseller') is EXCLUDED here — that contraction is owned by the partnership sheet (PARTNERSHIP,
 // via col R Delta). Otherwise reseller churn would be double-counted against LARR.
+// Also excluded: rows whose Col W "Leader Approved" says the churn isn't (yet) real —
+// 'Attempting Revival', 'Churn/Contraction Deferred', 'Churn/Contraction Prevented'.
+function churnRowExcluded(r) {
+  const custType = (r[7]  || '').trim().toLowerCase();
+  const segment  = (r[2]  || '').trim().toLowerCase();
+  if (custType === 'reseller' || segment === 'reseller') return true;   // counted via PARTNERSHIP
+  const status = (r[22] || '').trim().toLowerCase();
+  return status === 'attempting revival' || status === 'churn/contraction deferred' || status === 'churn/contraction prevented';
+}
 function computeRevenueLoss(churnRows) {
   if (!Array.isArray(churnRows)) return null;
   const out = { vini: 0, studio: 0, total: 0 };
   churnRows.forEach(r => {
     if ((r[4] || '').trim() !== CUR_YM) return;
-    const custType = (r[7] || '').trim().toLowerCase();
-    const segment  = (r[2] || '').trim().toLowerCase();
-    if (custType === 'reseller' || segment === 'reseller') return;  // counted via PARTNERSHIP
+    if (churnRowExcluded(r)) return;
     const arr = parseFloat(String(r[3] || '').replace(/[^0-9.\-]/g, '')) || 0;
     if ((r[5] || '').trim().toLowerCase() === 'vini') out.vini += arr;
     else out.studio += arr;   // anything not "Vini" (Col F) counts as Studio
@@ -642,15 +646,13 @@ function computeRevenueLoss(churnRows) {
   return out;
 }
 
-// D2D churn for a specific YYYY-MM from the raw churn rows (excludes Reseller, like computeRevenueLoss).
+// D2D churn for a specific YYYY-MM from the raw churn rows (same exclusions as computeRevenueLoss).
 // Returns { total, studio, vini }.
 function churnD2DForMonth(ym) {
   const out = { total: 0, studio: 0, vini: 0 };
   churnRowsRaw.forEach(r => {
     if ((r[4] || '').trim() !== ym) return;
-    const custType = (r[7] || '').trim().toLowerCase();
-    const segment  = (r[2] || '').trim().toLowerCase();
-    if (custType === 'reseller' || segment === 'reseller') return;
+    if (churnRowExcluded(r)) return;
     const arr = parseFloat(String(r[3] || '').replace(/[^0-9.\-]/g, '')) || 0;
     out.total += arr;
     if ((r[5] || '').trim().toLowerCase() === 'vini') out.vini += arr; else out.studio += arr;
@@ -1148,6 +1150,9 @@ async function loadAllData() {
     viniRows = parseVini(viniCSV);
     studioRows = [...parseAmer(amerCSV), ...parseApacEmea(apacCSV)];
     allRows = [...viniRows, ...studioRows];
+    // Sanitize Live TAT: a few sheet rows carry date-serial artifacts (e.g. 46192 "days"),
+    // which wreck every average. OB time beyond 400 days is not a real TAT.
+    allRows.forEach(r => { if (r.liveTat && (r.liveTat <= 0 || r.liveTat > 400)) r.liveTat = null; });
     attachAE(allRows);   // join AE / AE-Manager by Enterprise ID
     computeCurrBase();   // roll base to last month's close (bridge end)
 
@@ -2488,27 +2493,102 @@ function renderAccountTree(containerId, rows, showAgent) {
   </table>`;
 }
 
+let lastStudioFiltered = [];
+let stGoLiveSel = 0;   // months back from the current month (0 = current MTD)
+
 function renderStudio(filtered) {
+  lastStudioFiltered = filtered;
   const liveRows = filtered.filter(liveThisMonth);
   const expRows = filtered.filter(expThisMonth);
   const funnelRows = filtered.filter(isInFunnel);
-  const droppedRows = filtered.filter(droppedThisMonth);
-  const tats = filtered.map(r=>r.liveTat).filter(x=>x&&x>0);
 
   document.getElementById('st-kpi-live-n').textContent = liveRows.length;
   document.getElementById('st-kpi-live-arr').textContent = fmt$(liveRows.reduce((s,r)=>s+r.arr,0));
-  document.getElementById('st-kpi-exp-n').textContent = expRows.length;
-  document.getElementById('st-kpi-exp-arr').textContent = fmt$(expRows.reduce((s,r)=>s+r.arr,0));
+
+  // Expected Go-Live — ARR prominent; rooftop count (ents in bracket) below
+  const expEnts = new Set(expRows.map(r=>r.entityName||r.rooftopName||'?')).size;
+  document.getElementById('st-kpi-exp-n').textContent = fmt$(expRows.reduce((s,r)=>s+r.arr,0));
+  document.getElementById('st-kpi-exp-arr').textContent = `${expRows.length} rooftops (${expEnts} ents)`;
+
   document.getElementById('st-kpi-funnel-arr').textContent = fmt$(funnelRows.reduce((s,r)=>s+r.arr,0));
   document.getElementById('st-kpi-funnel-n').textContent = funnelRows.length + ' accounts';
-  document.getElementById('st-kpi-tat').textContent = avg(tats)?avg(tats).toFixed(1):'—';
-  document.getElementById('st-kpi-risk').textContent = fmt$(droppedRows.reduce((s,r)=>s+r.arr,0));
-  document.getElementById('st-kpi-risk-n').textContent = droppedRows.length + ' dropped';
 
-  renderStageDonut(filtered, 'st-stage-donut', 'st-stage-donut');
-  renderMonthlyLine(filtered, 'st-monthly-line', 'st-monthly-line');
-  renderArrByPoc(filtered, 'st-arr-poc-bar', 'st-arr-poc-bar');
+  // Avg OB Time — MTD headline; last month and L2L month in the subtext
+  const tatFor = (m,y) => avg(filtered.filter(r=>isLive(r)&&sameMonth(r.goLiveDate,m,y)).map(r=>r.liveTat).filter(x=>x&&x>0));
+  const mAt = i => { const d=new Date(CY,CM-i,1); return {m:d.getMonth(), y:d.getFullYear(), lab:d.toLocaleString('en-US',{month:'short'})}; };
+  const m0=mAt(0), m1=mAt(1), m2=mAt(2);
+  const t0=tatFor(m0.m,m0.y), t1=tatFor(m1.m,m1.y), t2=tatFor(m2.m,m2.y);
+  document.getElementById('st-kpi-tat').textContent = t0 ? t0.toFixed(1) : '—';
+  document.getElementById('st-kpi-tat-sub').innerHTML =
+    `${m0.lab} MTD · <b>${m1.lab}: ${t1?t1.toFixed(1)+'d':'—'}</b> · <b>${m2.lab}: ${t2?t2.toFixed(1)+'d':'—'}</b>`;
+
+  renderStSubStageDonut(filtered);
+  renderStObInitPocBar(filtered);
+  renderStGoLiveToggle();
+  renderStGoLivePocBar();
   renderAccountTree('st-tree', filtered, false);
+}
+
+// OB Initiated split by Sub Stage (Col F) — ARR shares, account counts in labels
+function renderStSubStageDonut(rows) {
+  destroyChart('st-substage-donut');
+  const ob = rows.filter(r=>/ob initiated/i.test((r.stage||'').trim()));
+  const m = {};
+  ob.forEach(r => { const s=(r.subStage||'').trim()||'No Sub Stage'; (m[s]=m[s]||{arr:0,n:0}); m[s].arr+=r.arr; m[s].n++; });
+  const entries = Object.entries(m).sort((a,b)=>b[1].arr-a[1].arr);
+  const el = document.getElementById('st-substage-donut'); if (!el) return;
+  const COLORS = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2','#059669','#DB2777','#65A30D','#64748B'];
+  charts['st-substage-donut'] = new Chart(el, {
+    type:'doughnut',
+    data:{ labels:entries.map(([k,v])=>`${k} (${v.n})`), datasets:[{ data:entries.map(([,v])=>Math.round(v.arr)), backgroundColor:COLORS.slice(0,entries.length), borderWidth:2, borderColor:'#fff' }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{font:{size:11}, boxWidth:12} },
+      tooltip:{ callbacks:{ label:c=>` ${c.label}: ${fmt$(c.parsed)}` } } } }
+  });
+}
+
+// OB Initiated split by OB POC — ARR bars, account count in the tooltip
+function renderStObInitPocBar(rows) {
+  destroyChart('st-obinit-poc-bar');
+  const ob = rows.filter(r=>/ob initiated/i.test((r.stage||'').trim()));
+  const m = {};
+  ob.forEach(r => { const p=(r.obPoc||'').trim()||'Unassigned'; (m[p]=m[p]||{arr:0,n:0}); m[p].arr+=r.arr; m[p].n++; });
+  const entries = Object.entries(m).sort((a,b)=>b[1].arr-a[1].arr);
+  const el = document.getElementById('st-obinit-poc-bar'); if (!el) return;
+  charts['st-obinit-poc-bar'] = new Chart(el, {
+    type:'bar',
+    data:{ labels:entries.map(([k])=>k), datasets:[{ data:entries.map(([,v])=>Math.round(v.arr)), backgroundColor:'#2563EB', borderRadius:4 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false},
+      tooltip:{ callbacks:{ label:c=>` ${fmt$(c.parsed.y)} · ${entries[c.dataIndex][1].n} accounts` } } },
+      scales:{ y:{ ticks:{ callback:v=>'$'+(v>=1000?(v/1000)+'K':v) } } } }
+  });
+}
+
+// Go-Lives by OB POC — last 3 months + current MTD, month toggle
+function stGoLiveSelect(i) { stGoLiveSel = i; renderStGoLiveToggle(); renderStGoLivePocBar(); }
+function renderStGoLiveToggle() {
+  const el = document.getElementById('st-golive-toggle'); if (!el) return;
+  el.innerHTML = [3,2,1,0].map(i => {
+    const d = new Date(CY, CM - i, 1);
+    const lab = d.toLocaleString('en-US',{month:'short'}) + " '" + String(d.getFullYear()).slice(2) + (i===0 ? ' MTD' : '');
+    const active = i === stGoLiveSel;
+    return `<button onclick="stGoLiveSelect(${i})" style="border:1px solid ${active?'var(--blue)':'var(--border)'};background:${active?'var(--blue)':'#fff'};color:${active?'#fff':'var(--muted)'};border-radius:14px;padding:3px 11px;font-size:11.5px;font-weight:600;cursor:pointer">${lab}</button>`;
+  }).join('');
+}
+function renderStGoLivePocBar() {
+  destroyChart('st-golive-poc-bar');
+  const d = new Date(CY, CM - stGoLiveSel, 1), m = d.getMonth(), y = d.getFullYear();
+  const rows = lastStudioFiltered.filter(r=>isLive(r) && sameMonth(r.goLiveDate, m, y));
+  const g = {};
+  rows.forEach(r => { const p=(r.obPoc||'').trim()||'Unassigned'; (g[p]=g[p]||{n:0,arr:0}); g[p].n++; g[p].arr+=r.arr; });
+  const entries = Object.entries(g).sort((a,b)=>b[1].n-a[1].n || b[1].arr-a[1].arr);
+  const el = document.getElementById('st-golive-poc-bar'); if (!el) return;
+  charts['st-golive-poc-bar'] = new Chart(el, {
+    type:'bar',
+    data:{ labels:entries.map(([k])=>k), datasets:[{ data:entries.map(([,v])=>v.n), backgroundColor:'#16A34A', borderRadius:4 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false},
+      tooltip:{ callbacks:{ label:c=>` ${c.parsed.y} accounts · ${fmt$(entries[c.dataIndex][1].arr)}` } } },
+      scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+  });
 }
 
 function renderStageDonut(rows, canvasId, chartKey) {
