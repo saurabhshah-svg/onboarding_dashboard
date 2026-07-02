@@ -385,14 +385,14 @@ const EMBEDDED_DATA = {
 
   <div class="section-grid section-grid-3" style="margin-bottom:20px">
     <div class="section">
-      <div class="section-title">OB Initiated — by Sub Stage</div>
+      <div class="section-title">ARR in Funnel — by Sub Stage <span id="st-substage-total" style="font-weight:600;color:var(--muted);font-size:12px"></span></div>
       <div style="display:flex;gap:12px;align-items:center">
         <div class="chart-wrap" style="flex:0 0 42%;min-width:0"><canvas id="st-substage-donut"></canvas></div>
         <div id="st-substage-legend" style="flex:1;min-width:0;font-size:11.5px"></div>
       </div>
     </div>
     <div class="section">
-      <div class="section-title">OB Initiated — by OB POC</div>
+      <div class="section-title">ARR in Funnel — by OB POC <span id="st-obpoc-total" style="font-weight:600;color:var(--muted);font-size:12px"></span></div>
       <div class="chart-wrap"><canvas id="st-obinit-poc-bar"></canvas></div>
     </div>
     <div class="section">
@@ -435,14 +435,14 @@ const EMBEDDED_DATA = {
 
   <div class="section-grid section-grid-3" style="margin-bottom:20px">
     <div class="section">
-      <div class="section-title">OB Initiated — by Sub Stage</div>
+      <div class="section-title">ARR in Funnel — by Sub Stage <span id="vi-substage-total" style="font-weight:600;color:var(--muted);font-size:12px"></span></div>
       <div style="display:flex;gap:12px;align-items:center">
         <div class="chart-wrap" style="flex:0 0 42%;min-width:0"><canvas id="vi-substage-donut"></canvas></div>
         <div id="vi-substage-legend" style="flex:1;min-width:0;font-size:11.5px"></div>
       </div>
     </div>
     <div class="section">
-      <div class="section-title">OB Initiated — by OB POC</div>
+      <div class="section-title">ARR in Funnel — by OB POC <span id="vi-obpoc-total" style="font-weight:600;color:var(--muted);font-size:12px"></span></div>
       <div class="chart-wrap"><canvas id="vi-obinit-poc-bar"></canvas></div>
     </div>
     <div class="section">
@@ -2560,11 +2560,14 @@ function renderStudio(filtered) {
   renderAccountTree('st-tree', filtered, false);
 }
 
-// OB Initiated split by Sub Stage (Col F) — ARR shares, account counts in labels
+// ARR in Funnel split by Sub Stage (Col F) — ARR shares, account counts in labels.
+// isInFunnel = OB Initiated + In Implementation, so Studio includes APAC/EMEA rows.
 function renderSubStageDonutFor(pfx, rows) {
   const key = pfx+'-substage-donut';
   destroyChart(key);
-  const ob = rows.filter(r=>/ob initiated/i.test((r.stage||'').trim()));
+  const ob = rows.filter(isInFunnel);
+  const tot = document.getElementById(pfx+'-substage-total');
+  if (tot) tot.textContent = `(${fmt$(ob.reduce((s,r)=>s+r.arr,0))} · ${ob.length})`;
   const m = {};
   ob.forEach(r => { const s=(r.subStage||'').trim()||'No Sub Stage'; (m[s]=m[s]||{arr:0,n:0}); m[s].arr+=r.arr; m[s].n++; });
   const entries = Object.entries(m).sort((a,b)=>b[1].arr-a[1].arr);
@@ -2585,13 +2588,16 @@ function renderSubStageDonutFor(pfx, rows) {
      </div>`).join('');
 }
 
-// OB Initiated split by OB POC — ARR bars; label on top = ARR (unit count)
-// unit = rooftops on the Studio tab, agents on the Vini tab
+// ARR in Funnel split by OB POC — ARR bars; label on top = ARR (unit count).
+// unit = rooftops on the Studio tab, agents on the Vini tab.
+// isInFunnel = OB Initiated + In Implementation, so Studio includes APAC/EMEA rows.
 function renderObInitPocBarFor(pfx, rows) {
   const key = pfx+'-obinit-poc-bar';
   destroyChart(key);
   const unit = pfx === 'vi' ? 'agents' : 'rooftops';
-  const ob = rows.filter(r=>/ob initiated/i.test((r.stage||'').trim()));
+  const ob = rows.filter(isInFunnel);
+  const tot = document.getElementById(pfx+'-obpoc-total');
+  if (tot) tot.textContent = `(${fmt$(ob.reduce((s,r)=>s+r.arr,0))} · ${ob.length})`;
   const m = {};
   ob.forEach(r => { const p=(r.obPoc||'').trim()||'Unassigned'; (m[p]=m[p]||{arr:0,n:0}); m[p].arr+=r.arr; m[p].n++; });
   const entries = Object.entries(m).sort((a,b)=>b[1].arr-a[1].arr);
