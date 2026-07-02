@@ -1950,32 +1950,44 @@ function renderWentLiveMonth(filtered) {
   document.getElementById('went-live-meta').textContent =
     `— D2D ${uniq(liveRows)} ent · ${fmt$(sum(liveRows))}  +  Partnership ${expItems.length} partners · ${fmt$(expTotal)}`;
 
-  const th = (t,a)=>`<th style="padding:8px 10px;text-align:${a||'left'};font-size:11px;text-transform:uppercase;color:var(--muted)">${t}</th>`;
-  const cell = (v,a,bold)=>`<td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:${a||'left'};${bold?'font-weight:600;color:var(--text)':'color:var(--muted)'}">${v}</td>`;
-  const secHead = (label,color,meta)=>`<div style="display:flex;justify-content:space-between;align-items:center;background:${color};color:#fff;padding:9px 14px;border-radius:8px 8px 0 0;font-weight:700;font-size:14px"><span>${label}</span><span style="font-size:12px;font-weight:600">${meta}</span></div>`;
-  const empty = msg => `<div style="border:1px solid var(--border);border-top:none;padding:12px;color:var(--muted);font-size:13px">${msg}</div>`;
+  const th = (t,a)=>`<th style="padding:8px 12px;text-align:${a||'left'};font-size:10.5px;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);white-space:nowrap">${t}</th>`;
+  const cell = (v,a,opts)=>{ const o=opts||{}; return `<td style="padding:8px 12px;border-top:1px solid var(--border);text-align:${a||'left'};vertical-align:top;${o.bold?'font-weight:600;color:var(--text)':'color:var(--muted)'};${o.nowrap?'white-space:nowrap':''}">${v}</td>`; };
+  // One clean card per bucket: colored header + table inside a single rounded border
+  const card = (label,color,meta,body) => `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:center;background:${color};color:#fff;padding:9px 14px;font-weight:700;font-size:13.5px"><span>${label}</span><span style="font-size:12px;font-weight:600;opacity:.9">${meta}</span></div>
+      ${body}
+    </div>`;
+  const empty = msg => `<div style="padding:14px;color:var(--faint);font-size:13px">${msg}</div>`;
+  const tbl = (heads, rowsHtml) => `<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#F8FAFC">${heads}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
 
-  const grp = (items, withProduct) => {
+  const grp = (items, isVini) => {
     const m = {};
-    items.forEach(r => { const e=r.entityName||r.rooftopName||'—'; const g=m[e]||(m[e]={ent:e,n:0,arr:0,prod:new Set(),poc:new Set(),dates:new Set()}); g.n++; g.arr+=r.arr; if(withProduct&&r.product) g.prod.add(r.product); if(r.obPoc) g.poc.add(r.obPoc); if(r.goLiveDate) g.dates.add(fmtDate(r.goLiveDate)); });
+    items.forEach(r => { const e=r.entityName||r.rooftopName||'—'; const g=m[e]||(m[e]={ent:e,n:0,arr:0,prod:new Set(),poc:new Set(),agents:new Set(),dates:new Set()}); g.n++; g.arr+=r.arr; if(r.product) g.prod.add(r.product); if(r.obPoc) g.poc.add(r.obPoc); if(isVini&&(r.agent||'').trim()) g.agents.add(r.agent.trim()); if(r.goLiveDate) g.dates.add(fmtDate(r.goLiveDate)); });
     return Object.values(m).sort((a,b)=>b.arr-a.arr);
   };
   const d2dTable = b => {
-    const g = grp(b.rows, b.withProduct);
-    if (!g.length) return secHead(b.label, b.color, '0 ent · $0') + empty('No go-lives this month.');
-    return secHead(b.label, b.color, `${g.length} ent · ${fmt$(sum(b.rows))}`) +
-      `<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--border);border-top:none"><thead><tr style="background:#F8FAFC">${th('Enterprise')}${th('Rooftops','center')}${b.withProduct?th('Product'):''}${th('ARR','right')}${th('OB POC')}${th('Went Live')}</tr></thead><tbody>` +
-      g.map(x=>`<tr>${cell(x.ent,'left',true)}${cell(x.n,'center',true)}${b.withProduct?cell([...x.prod].join(', ')||'—'):''}${cell(fmt$(x.arr),'right',true)}${cell([...x.poc].join(', ')||'—')}${cell([...x.dates].join(', ')||'—')}</tr>`).join('') +
-      `</tbody></table>`;
+    const isVini = !b.withProduct;
+    const g = grp(b.rows, isVini);
+    if (!g.length) return card(b.label, b.color, '0 ent · $0', empty('No go-lives this month.'));
+    const heads = th('Enterprise') + (isVini ? th('Agents') : th('Rooftops','center') + th('Product')) + th('ARR','right') + th('OB POC') + th('Went Live','right');
+    const rows = g.map(x=>`<tr>`+
+      cell(x.ent,'left',{bold:true}) +
+      (isVini
+        ? cell(x.agents.size ? `${x.agents.size} <span style="color:var(--faint)">(${[...x.agents].join(', ')})</span>` : '—')
+        : cell(x.n,'center',{bold:true}) + cell([...x.prod].join(' · ')||'—')) +
+      cell(fmt$(x.arr),'right',{bold:true,nowrap:true}) +
+      cell([...x.poc].join(', ')||'—',null,{nowrap:true}) +
+      cell([...x.dates].join(', ')||'—','right',{nowrap:true}) +
+      `</tr>`).join('');
+    return card(b.label, b.color, `${g.length} ent · ${fmt$(sum(b.rows))}`, tbl(heads, rows));
   };
   const ptnrTable = () => {
-    if (!expItems.length) return secHead('Partnership — Revenue Expanded', '#6D28D9', '0 partners · $0') + empty('No partnership expansion this month.');
-    return secHead('Partnership — Revenue Expanded', '#6D28D9', `${expItems.length} partners · ${fmt$(expTotal)}`) +
-      `<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--border);border-top:none"><thead><tr style="background:#F8FAFC">${th('Partner')}${th('Product')}${th('Region')}${th('Expansion ARR','right')}</tr></thead><tbody>` +
-      expItems.map(it=>`<tr>${cell(it.name,'left',true)}${cell(it.product)}${cell(it.region||'—')}${cell('+'+fmt$(it.delta),'right',true)}</tr>`).join('') +
-      `</tbody></table>`;
+    if (!expItems.length) return card('Partnership — Revenue Expanded', '#6D28D9', '0 partners · $0', empty('No partnership expansion this month.'));
+    const heads = th('Partner') + th('Product') + th('Region') + th('Expansion ARR','right');
+    const rows = expItems.map(it=>`<tr>${cell(it.name,'left',{bold:true})}${cell(it.product)}${cell(it.region||'—')}${cell('<span style="color:var(--green);font-weight:700">+'+fmt$(it.delta)+'</span>','right',{nowrap:true})}</tr>`).join('');
+    return card('Partnership — Revenue Expanded', '#6D28D9', `${expItems.length} partners · ${fmt$(expTotal)}`, tbl(heads, rows));
   };
-  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px">
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:14px;align-items:start">
     <div style="min-width:0">${d2dTable(buckets[0])}</div>
     <div style="min-width:0">${d2dTable(buckets[1])}</div>
     <div style="min-width:0">${d2dTable(buckets[2])}</div>
