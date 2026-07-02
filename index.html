@@ -321,6 +321,18 @@ const EMBEDDED_DATA = {
     <div id="sched-today"></div>
   </div>
 
+  <!-- Went Live / Expanded This Month (Studio / Vini / Studio APAC / Partnership) -->
+  <div class="section" style="margin-bottom:20px">
+    <div class="section-title">Went Live / Expanded This Month <span id="went-live-meta" style="font-weight:500;color:var(--muted);font-size:12px"></span></div>
+    <div id="went-live-month"></div>
+  </div>
+
+  <!-- DoD chart full width -->
+  <div class="section" style="margin-bottom:20px">
+    <div class="section-title">Day-by-Day Expected Go-Lives (This Month)</div>
+    <div class="chart-wrap-tall"><canvas id="dod-chart"></canvas></div>
+  </div>
+
   <!-- Pipeline by Source -->
   <div class="section" style="margin-bottom:20px">
     <div class="section-title">Pipeline by Source</div>
@@ -336,12 +348,6 @@ const EMBEDDED_DATA = {
         <tbody id="pipeline-tbody"></tbody>
       </table>
     </div>
-  </div>
-
-  <!-- DoD chart full width -->
-  <div class="section" style="margin-bottom:20px">
-    <div class="section-title">Day-by-Day Expected Go-Lives (This Month)</div>
-    <div class="chart-wrap-tall"><canvas id="dod-chart"></canvas></div>
   </div>
 
   <!-- POC-Level Pendency Overview -->
@@ -854,20 +860,22 @@ function attachAE(rows) {
 //   'Delta (M-1 to M)'   = latest month's change  → current month
 //   'Delta (M-2 to M-1)' = the month before that  → last month (bridge)
 // ('delta' is the old single-column name, kept as a fallback.)
-let PARTNERSHIP = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:false };
-let PARTNERSHIP_PREV = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:false };
+let PARTNERSHIP = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:false, items:[] };
+let PARTNERSHIP_PREV = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:false, items:[] };
 function parsePartnership(rows, deltaNames) {
-  const P = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:true };
+  const P = { exp:0, churn:0, net:0, expStudio:0, expVini:0, churnStudio:0, churnVini:0, netStudio:0, netVini:0, count:0, loaded:true, items:[] };
   if (!rows || !rows.length) return P;
   const cm = buildColMap(rows[0]);   // header is the first row
   rows.slice(1).forEach(r => {
-    if (!getCol(r, cm, 'partners')) return;
+    const name = getCol(r, cm, 'partners');
+    if (!name) return;
     const ds = getCol(r, cm, ...deltaNames);
     if (ds === '') return;
     const d = parseARR(ds) * 12;     // annualize monthly delta → ARR
     if (!d) return;
     const isV = /vini/i.test(getCol(r, cm, 'product'));
     P.count++;
+    P.items.push({ name, product: getCol(r, cm, 'product') || (isV ? 'Vini' : 'Studio'), region: getCol(r, cm, 'region'), delta: d });
     if (d > 0) { P.exp += d;  if (isV) P.expVini += d;  else P.expStudio += d; }
     else       { P.churn += -d; if (isV) P.churnVini += -d; else P.churnStudio += -d; }
   });
@@ -1918,9 +1926,61 @@ function renderOverview(filtered) {
 
   renderLastMonthBridge();
   renderScheduledToday(filtered);
+  renderWentLiveMonth(filtered);
   renderPipelineTable(filtered);
   renderDoDChart(filtered);
   renderPocPendency(filtered);
+}
+
+// Went Live / Expanded This Month — 4 buckets: Studio (AMER) / Vini / Studio APAC-EMEA
+// go-lives from the OB sheets, plus Partnership accounts whose revenue expanded
+// (positive current-month Delta in the RAG sheet, ×12).
+function renderWentLiveMonth(filtered) {
+  const el = document.getElementById('went-live-month'); if (!el) return;
+  const sum = a => a.reduce((s,r)=>s+r.arr,0);
+  const uniq = rows => new Set(rows.map(r=>r.entityName||r.rooftopName||'?')).size;
+  const liveRows = filtered.filter(liveThisMonth);
+  const buckets = [
+    { label:'Studio',            color:'#1e40af', rows: liveRows.filter(r=>r.source==='amer'), withProduct:true  },
+    { label:'Vini',              color:'#065f46', rows: liveRows.filter(r=>r.source==='vini'), withProduct:false },
+    { label:'Studio APAC/EMEA',  color:'#0E7490', rows: liveRows.filter(r=>r.source==='apac'), withProduct:true  }
+  ];
+  const expItems = (PARTNERSHIP.items||[]).filter(it=>it.delta>0).sort((a,b)=>b.delta-a.delta);
+  const expTotal = expItems.reduce((s,it)=>s+it.delta,0);
+  document.getElementById('went-live-meta').textContent =
+    `— D2D ${uniq(liveRows)} ent · ${fmt$(sum(liveRows))}  +  Partnership ${expItems.length} partners · ${fmt$(expTotal)}`;
+
+  const th = (t,a)=>`<th style="padding:8px 10px;text-align:${a||'left'};font-size:11px;text-transform:uppercase;color:var(--muted)">${t}</th>`;
+  const cell = (v,a,bold)=>`<td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:${a||'left'};${bold?'font-weight:600;color:var(--text)':'color:var(--muted)'}">${v}</td>`;
+  const secHead = (label,color,meta)=>`<div style="display:flex;justify-content:space-between;align-items:center;background:${color};color:#fff;padding:9px 14px;border-radius:8px 8px 0 0;font-weight:700;font-size:14px"><span>${label}</span><span style="font-size:12px;font-weight:600">${meta}</span></div>`;
+  const empty = msg => `<div style="border:1px solid var(--border);border-top:none;padding:12px;color:var(--muted);font-size:13px">${msg}</div>`;
+
+  const grp = (items, withProduct) => {
+    const m = {};
+    items.forEach(r => { const e=r.entityName||r.rooftopName||'—'; const g=m[e]||(m[e]={ent:e,n:0,arr:0,prod:new Set(),poc:new Set(),dates:new Set()}); g.n++; g.arr+=r.arr; if(withProduct&&r.product) g.prod.add(r.product); if(r.obPoc) g.poc.add(r.obPoc); if(r.goLiveDate) g.dates.add(fmtDate(r.goLiveDate)); });
+    return Object.values(m).sort((a,b)=>b.arr-a.arr);
+  };
+  const d2dTable = b => {
+    const g = grp(b.rows, b.withProduct);
+    if (!g.length) return secHead(b.label, b.color, '0 ent · $0') + empty('No go-lives this month.');
+    return secHead(b.label, b.color, `${g.length} ent · ${fmt$(sum(b.rows))}`) +
+      `<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--border);border-top:none"><thead><tr style="background:#F8FAFC">${th('Enterprise')}${th('Rooftops','center')}${b.withProduct?th('Product'):''}${th('ARR','right')}${th('OB POC')}${th('Went Live')}</tr></thead><tbody>` +
+      g.map(x=>`<tr>${cell(x.ent,'left',true)}${cell(x.n,'center',true)}${b.withProduct?cell([...x.prod].join(', ')||'—'):''}${cell(fmt$(x.arr),'right',true)}${cell([...x.poc].join(', ')||'—')}${cell([...x.dates].join(', ')||'—')}</tr>`).join('') +
+      `</tbody></table>`;
+  };
+  const ptnrTable = () => {
+    if (!expItems.length) return secHead('Partnership — Revenue Expanded', '#6D28D9', '0 partners · $0') + empty('No partnership expansion this month.');
+    return secHead('Partnership — Revenue Expanded', '#6D28D9', `${expItems.length} partners · ${fmt$(expTotal)}`) +
+      `<table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--border);border-top:none"><thead><tr style="background:#F8FAFC">${th('Partner')}${th('Product')}${th('Region')}${th('Expansion ARR','right')}</tr></thead><tbody>` +
+      expItems.map(it=>`<tr>${cell(it.name,'left',true)}${cell(it.product)}${cell(it.region||'—')}${cell('+'+fmt$(it.delta),'right',true)}</tr>`).join('') +
+      `</tbody></table>`;
+  };
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px">
+    <div style="min-width:0">${d2dTable(buckets[0])}</div>
+    <div style="min-width:0">${d2dTable(buckets[1])}</div>
+    <div style="min-width:0">${d2dTable(buckets[2])}</div>
+    <div style="min-width:0">${ptnrTable()}</div>
+  </div>`;
 }
 
 // Scheduled to Go-Live Today — Studio / Vini tables (same content as the Email view).
