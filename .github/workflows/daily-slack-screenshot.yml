@@ -1,13 +1,42 @@
 name: Daily OB Report → Slack + Email
 
 on:
-  # Triggered daily at 09:00 IST by an external scheduler (cron-job.org) that calls
-  # the workflow_dispatch REST API. GitHub's native cron was unreliable (ran ~8h late),
-  # so it's removed. Also runnable manually from the Actions tab.
+  # Primary trigger: cron-job.org calls the workflow_dispatch REST API daily at 09:00 IST.
+  # Backup trigger: GitHub's native cron (timing is best-effort, often late) — the guard
+  # job below SKIPS the backup if a workflow_dispatch run already succeeded today, so the
+  # report always goes out exactly once even if the external scheduler dies.
   workflow_dispatch: {}
+  schedule:
+    - cron: '15 4 * * *'   # 09:45 IST backup window (fires late sometimes; guard prevents dupes)
 
 jobs:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      send: ${{ steps.check.outputs.send }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "send=yes" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          TODAY=$(date -u +%Y-%m-%d)
+          COUNT=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?event=workflow_dispatch&status=success&created=%3E%3D$TODAY&per_page=50" \
+            | jq '[.workflow_runs[] | select(.path == ".github/workflows/daily-slack-screenshot.yml")] | length')
+          echo "Successful dispatch runs today: $COUNT"
+          if [ "${COUNT:-0}" -gt 0 ]; then
+            echo "Report already sent today — skipping backup run."
+            echo "send=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "send=yes" >> "$GITHUB_OUTPUT"
+          fi
+
   report:
+    needs: guard
+    if: needs.guard.outputs.send == 'yes'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
