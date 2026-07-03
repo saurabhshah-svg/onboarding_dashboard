@@ -20,6 +20,10 @@ const AE_GID = 0;
 const PARTNERSHIP_SPREADSHEET_ID = '1kvvDbnpUAodPnmnLEVAWejLAzTwEflkzLSkXiAeOkB4';
 const PARTNERSHIP_GID = 135115178;
 
+// Program Management tracker (separate spreadsheet)
+const PROGRAMS_SPREADSHEET_ID = '1RUr1PeSmqTkqtfnrEXdfqlfvHnlX1TXhh-SvgnYE3EQ';
+const PROGRAMS_GID = 0;
+
 // Shared secret for the daily-email endpoint (doPost). Set this to the SAME value
 // you store as the GitHub Action secret MAIL_SECRET. Leave blank to disable emailing.
 const MAIL_SECRET = '';   // e.g. obmail-xxxxxxxx-xxxx-...
@@ -31,6 +35,7 @@ function doGet(e) {
     if (sheet === 'churn') { ssId = CHURN_SPREADSHEET_ID; gid = CHURN_GID; useDisplay = true; }
     else if (sheet === 'aemap') { ssId = AE_SPREADSHEET_ID; gid = AE_GID; useDisplay = true; }
     else if (sheet === 'partnership') { ssId = PARTNERSHIP_SPREADSHEET_ID; gid = PARTNERSHIP_GID; }
+    else if (sheet === 'programs') { ssId = PROGRAMS_SPREADSHEET_ID; gid = PROGRAMS_GID; useDisplay = true; }
     else { ssId = SPREADSHEET_ID; gid = GID_MAP[sheet]; }
     if (gid === undefined || gid === null) return respond({ error: 'Unknown sheet: ' + sheet });
 
@@ -51,19 +56,20 @@ function doGet(e) {
   }
 }
 
-// Daily email endpoint — the GitHub Action POSTs the Email-View screenshot here,
-// and this emails it (inline + attached) from your Google account via GmailApp.
+// Daily email endpoint — the GitHub Action POSTs the report here and this emails
+// it from your Google account via GmailApp. Preferred payload: { html } (a full
+// email-safe HTML body — no image, no attachment). If a legacy { png } is sent,
+// it is embedded inline only (never attached).
 function doPost(e) {
   try {
     const b = JSON.parse(e.postData.contents);
     if (!MAIL_SECRET || b.secret !== MAIL_SECRET) return respond({ error: 'unauthorized' });
-    const blob = Utilities.newBlob(Utilities.base64Decode(b.png), 'image/png', b.filename || 'ob-report.png');
-    GmailApp.sendEmail(b.to || 'reports@spyne.ai', b.subject || 'OB Report', b.text || 'OB Report (see attached).', {
-      htmlBody: b.html || '',
-      attachments: [blob],
-      inlineImages: { obreport: blob },
-      name: 'Spyne OB Reports'
-    });
+    const opts = { htmlBody: b.html || '', name: 'Spyne OB Reports' };
+    if (b.png) {
+      const blob = Utilities.newBlob(Utilities.base64Decode(b.png), 'image/png', b.filename || 'ob-report.png');
+      opts.inlineImages = { obreport: blob };   // inline only — no attachment
+    }
+    GmailApp.sendEmail(b.to || 'reports@spyne.ai', b.subject || 'OB Report', b.text || 'OB Report.', opts);
     return respond({ ok: true });
   } catch (err) {
     return respond({ error: err.toString() });
