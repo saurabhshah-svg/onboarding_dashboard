@@ -63,6 +63,8 @@ a:hover { text-decoration:underline; }
 .main.active { display:block; }
 
 /* KPI grid */
+.views-subtab { border:1px solid var(--border); background:#fff; color:var(--muted); border-radius:18px; padding:6px 18px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+.views-subtab.active { background:var(--blue); border-color:var(--blue); color:#fff; }
 .kpi-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:12px; margin-bottom:20px; }
 .kpi-grid-5 { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px; }
 .kpi-grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
@@ -160,7 +162,7 @@ tr:hover td { background:#F8FAFC; }
 .empty-state { text-align:center; padding:40px; color:var(--muted); }
 .row-total { background:#F8FAFC; font-weight:700; }
 /* ── Display (TV) board ───────────────────────────────────── */
-#tab-display { padding: 0 !important; }
+#view-display { margin:12px -24px -24px; }   /* full-bleed TV board inside the padded Views tab */
 #display-board { height: calc(100vh - 150px); display:flex; flex-direction:column; gap:10px; padding:10px 14px; box-sizing:border-box; overflow:hidden; background:var(--bg); }
 #display-board:fullscreen { height:100vh !important; padding:16px 22px; overflow:hidden; }
 /* ── Account tree: stacked sticky headers (column → month → confirmation) ── */
@@ -208,9 +210,7 @@ const EMBEDDED_DATA = {
   <div class="tab" onclick="switchTab('vini')">Vini</div>
   <div class="tab" onclick="switchTab('programs')">Programs</div>
   <div class="tab" onclick="switchTab('analytics')">Analytics</div>
-  <div class="tab" onclick="switchTab('email')">Email View</div>
-  <div class="tab" onclick="switchTab('display')">Display</div>
-  <div class="tab" onclick="switchTab('slack')">Slack View</div>
+  <div class="tab" onclick="switchTab('views')">Views</div>
 </div>
 
 <!-- Filter bars -->
@@ -486,19 +486,22 @@ const EMBEDDED_DATA = {
   </div>
 </div>
 
-<!-- Email View Tab -->
-<div id="tab-email" class="main">
-  <div id="email-content" style="padding:16px 16px 20px"></div>
-</div>
-
-<!-- Display (TV) Tab -->
-<div id="tab-display" class="main">
-  <div id="display-board"></div>
-</div>
-
-<!-- Slack View Tab -->
-<div id="tab-slack" class="main">
-  <div id="slack-content" style="padding:16px 12px 24px"></div>
+<!-- Views Tab (Email / Display / Slack) -->
+<div id="tab-views" class="main">
+  <div id="views-subtabs" style="display:flex;gap:8px;padding:14px 16px 0;justify-content:center">
+    <button class="views-subtab active" data-view="email" onclick="switchView('email')">Email View</button>
+    <button class="views-subtab" data-view="display" onclick="switchView('display')">Display View</button>
+    <button class="views-subtab" data-view="slack" onclick="switchView('slack')">Slack View</button>
+  </div>
+  <div id="view-email">
+    <div id="email-content" style="padding:16px 16px 20px"></div>
+  </div>
+  <div id="view-display" style="display:none">
+    <div id="display-board"></div>
+  </div>
+  <div id="view-slack" style="display:none">
+    <div id="slack-content" style="padding:16px 12px 24px"></div>
+  </div>
 </div>
 
 <!-- Setup Guide Modal -->
@@ -1035,7 +1038,7 @@ function showErrorBanner(msg) {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab').forEach((el,i) => {
-    const tabs = ['overview','studio','vini','programs','analytics','email','display','slack'];
+    const tabs = ['overview','studio','vini','programs','analytics','views'];
     el.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.main').forEach(el => el.classList.remove('active'));
@@ -1043,6 +1046,17 @@ function switchTab(tab) {
   document.getElementById('filter-overview').style.display = tab==='overview'?'flex':'none';
   document.getElementById('filter-studio').style.display = tab==='studio'?'flex':'none';
   document.getElementById('filter-vini').style.display = tab==='vini'?'flex':'none';
+  renderAll();
+}
+
+// Sub-tabs inside the Views tab (Email / Display / Slack)
+let currentView = 'email';
+function switchView(v) {
+  currentView = v;
+  document.querySelectorAll('.views-subtab').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  ['email','display','slack'].forEach(k => {
+    document.getElementById('view-'+k).style.display = k === v ? 'block' : 'none';
+  });
   renderAll();
 }
 
@@ -1203,12 +1217,10 @@ function renderAll() {
     renderPrograms(allRows);
   } else if (currentTab === 'analytics') {
     renderAnalytics(allRows);
-  } else if (currentTab === 'email') {
-    renderEmailView(allRows);
-  } else if (currentTab === 'display') {
-    renderDisplay(allRows);
-  } else if (currentTab === 'slack') {
-    renderSlack(allRows);
+  } else if (currentTab === 'views') {
+    if (currentView === 'email')        renderEmailView(allRows);
+    else if (currentView === 'display') renderDisplay(allRows);
+    else if (currentView === 'slack')   renderSlack(allRows);
   }
 }
 
@@ -2854,9 +2866,11 @@ function copyAppsScript() {
 
 // ─── Init ──────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  // Deep-link: e.g. ...vercel.app/#email opens the Email View directly (used by the daily screenshot bot)
+  // Deep-link: e.g. ...vercel.app/#email opens the Email sub-view directly (used by the daily report bot).
+  // #email / #display / #slack land on the Views tab with the right sub-tab selected.
   const tab = (location.hash || '').replace('#', '');
-  if (['overview','studio','vini','programs','analytics','email','display','slack'].includes(tab)) switchTab(tab);
+  if (['email','display','slack'].includes(tab)) { switchTab('views'); switchView(tab); }
+  else if (['overview','studio','vini','programs','analytics','views'].includes(tab)) switchTab(tab);
   loadAllData();
   // Auto-refresh every 4 hours
   setInterval(loadAllData, 4 * 60 * 60 * 1000);
