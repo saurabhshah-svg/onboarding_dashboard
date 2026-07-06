@@ -337,33 +337,19 @@ const EMBEDDED_DATA = {
     <div class="chart-wrap-tall"><canvas id="dod-chart"></canvas></div>
   </div>
 
-  <!-- OB Pipeline: Overall (by source) then People level (by OB POC) -->
+  <!-- OB Pipeline: expandable Source → OB POC -->
   <div class="section" style="margin-bottom:20px">
-    <div class="section-title">OB Pipeline</div>
-    <div class="pipeline-sublabel">Overall — by Source</div>
-    <div class="table-wrap" style="margin-bottom:22px">
+    <div class="section-title">OB Pipeline <span style="font-weight:500;color:var(--muted);font-size:12px">— by Source · click a source to break down by OB POC</span></div>
+    <div class="table-wrap">
       <table id="pipeline-table">
         <thead>
           <tr>
-            <th>Funnel</th>
+            <th>Source / OB POC</th>
             <th class="td-right">Total ARR in Funnel</th>
             <th class="td-right">ARR Went Live This Month</th>
           </tr>
         </thead>
         <tbody id="pipeline-tbody"></tbody>
-      </table>
-    </div>
-    <div class="pipeline-sublabel">By OB POC</div>
-    <div class="table-wrap">
-      <table id="pipeline-poc-table">
-        <thead>
-          <tr>
-            <th>OB POC</th>
-            <th class="td-right">Total ARR in Funnel</th>
-            <th class="td-right">ARR Went Live This Month</th>
-          </tr>
-        </thead>
-        <tbody id="pipeline-poc-tbody"></tbody>
       </table>
     </div>
   </div>
@@ -2139,81 +2125,59 @@ function renderLastMonthBridge() {
 }
 
 function renderPipelineTable(filtered) {
-  // TASK 7: 3-column table — Funnel | Total ARR in Funnel | ARR Went Live
-  //
-  // Funnel categories are determined by 'In-OB from' column (inObFrom):
-  //   "From In-OB"   → accounts that entered OB funnel from In-OB (fixed Day 1)
-  //   "From PWS"     → accounts that entered OB funnel from PWS   (fixed Day 1)
-  //   "From New Sales" → accounts that entered OB from New Sales   (updates through month)
-  //
-  // "Total ARR in Funnel" = all accounts currently in funnel (isInFunnel) from that source
-  // "ARR Went Live"       = accounts that went live this month from that source (uses liveFrom)
-  //
-  // Keys must exactly match normSource() output values
-  const FUNNELS = [
-    { key: 'From In-Ob',    label: 'From In-Ob',    badgeClass: 'badge-inob' },
-    { key: 'From PWS',      label: 'From PWS',       badgeClass: 'badge-pws'  },
-    { key: 'From New Sales',label: 'From New Sales', badgeClass: 'badge-news' },
-  ];
-
+  // Expandable OB Pipeline: Source (parent) → OB POC (children).
+  //   Total ARR in Funnel = live in-funnel accounts, grouped by 'In-Ob from' → OB POC
+  //   ARR Went Live        = accounts that went live this month, grouped by 'Live From' → OB POC
+  // Everything is dynamic (live), so each source total = sum of its POC rows and the
+  // grand total = all in-funnel. For In-Ob / PWS the leadership Day-1 snapshot is shown
+  // as a muted "start $X" reference on the source row (it can't be split by POC).
   const tbody = document.getElementById('pipeline-tbody');
-  let totalFunnelARR = 0, totalLiveARR = 0;
+  if (!tbody) return;
+  const SNAPSHOT = { 'From In-Ob': INOB_START_ARR, 'From PWS': PWS_START_ARR };
+  const BADGE = { 'From In-Ob':'badge-inob', 'From PWS':'badge-pws', 'From New Sales':'badge-news' };
+  const ORDER = ['From In-Ob', 'From PWS', 'From New Sales'];
 
-  const rows = FUNNELS.map(({ key, label, badgeClass }) => {
-    // Funnel ARR:
-    // In-OB & PWS → fixed Day-1 snapshot (provided by leadership, doesn't change mid-month)
-    // New Sales    → live count from 'In-OB from' column (updates throughout month)
-    const inFunnel = filtered.filter(r => isInFunnel(r) && (r.inObFrom || 'Untagged') === key);
-    const funnelARR = key === 'From In-Ob' ? INOB_START_ARR
-                    : key === 'From PWS'  ? PWS_START_ARR
-                    : inFunnel.reduce((s,r) => s + r.arr, 0); // From New Sales: dynamic
-
-    // Live ARR: accounts that went live this month whose 'Live From' = this funnel
-    const wentLive  = filtered.filter(r => liveThisMonth(r) && (r.liveFrom || 'Untagged') === key);
-    const liveARR   = wentLive.reduce((s,r) => s + r.arr, 0);
-
-    totalFunnelARR += funnelARR;
-    totalLiveARR   += liveARR;
-
-    return `<tr>
-      <td><span class="badge ${badgeClass}">${label}</span></td>
-      <td class="td-right font-bold">${fmt$(funnelARR)}<span class="td-count"> (${inFunnel.length})</span></td>
-      <td class="td-right font-bold text-green">${fmt$(liveARR)}<span class="td-count"> (${wentLive.length})</span></td>
-    </tr>`;
+  const src = {};
+  const ensure = k => src[k] || (src[k] = { fARR:0, fN:0, lARR:0, lN:0, pocs:{} });
+  const ensurePoc = (s, p) => s.pocs[p] || (s.pocs[p] = { fARR:0, fN:0, lARR:0, lN:0 });
+  filtered.filter(isInFunnel).forEach(r => {
+    const s = ensure(r.inObFrom || 'Untagged'); const p = ensurePoc(s, (r.obPoc||'').trim() || 'Unassigned');
+    s.fARR += r.arr; s.fN++; p.fARR += r.arr; p.fN++;
+  });
+  filtered.filter(liveThisMonth).forEach(r => {
+    const s = ensure(r.liveFrom || 'Untagged'); const p = ensurePoc(s, (r.obPoc||'').trim() || 'Unassigned');
+    s.lARR += r.arr; s.lN++; p.lARR += r.arr; p.lN++;
   });
 
-  rows.push(`<tr class="row-total">
+  const srcKeys = Object.keys(src).sort((a,b) => {
+    const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+    return (ia<0?99:ia) - (ib<0?99:ib) || a.localeCompare(b);
+  });
+  const liveCell = (arr,n) => n ? `${fmt$(arr)}<span class="td-count"> (${n})</span>` : '<span style="color:var(--faint)">—</span>';
+  let gF=0, gFn=0, gL=0, gLn=0, gid=0;
+  const html = srcKeys.map(key => {
+    const s = src[key]; gF+=s.fARR; gFn+=s.fN; gL+=s.lARR; gLn+=s.lN;
+    const id = 'pl-' + (gid++);
+    const snap = SNAPSHOT[key] ? `<span class="td-count"> · start ${fmt$(SNAPSHOT[key])}</span>` : '';
+    const pocKeys = Object.keys(s.pocs).sort((a,b) => s.pocs[b].fARR - s.pocs[a].fARR);
+    const parent = `<tr onclick="toggleTree('${id}',this)" style="cursor:pointer">
+      <td><span class="tree-caret" style="display:inline-block;width:14px;color:var(--muted)">▸</span><span class="badge ${BADGE[key]||'badge-inob'}">${key}</span></td>
+      <td class="td-right font-bold">${fmt$(s.fARR)}<span class="td-count"> (${s.fN})</span>${snap}</td>
+      <td class="td-right font-bold text-green">${liveCell(s.lARR, s.lN)}</td>
+    </tr>`;
+    const kids = pocKeys.map(p => { const v = s.pocs[p]; return `<tr class="${id}" style="display:none;background:#fbfcfe">
+      <td style="padding-left:34px;color:var(--muted)">${p}</td>
+      <td class="td-right">${fmt$(v.fARR)}<span class="td-count"> (${v.fN})</span></td>
+      <td class="td-right text-green">${liveCell(v.lARR, v.lN)}</td>
+    </tr>`; }).join('');
+    return parent + kids;
+  });
+  html.push(`<tr class="row-total">
     <td><strong>Total</strong></td>
-    <td class="td-right"><strong>${fmt$(totalFunnelARR)}</strong></td>
-    <td class="td-right text-green"><strong>${fmt$(totalLiveARR)}</strong></td>
+    <td class="td-right"><strong>${fmt$(gF)}</strong><span class="td-count"> (${gFn})</span></td>
+    <td class="td-right text-green"><strong>${fmt$(gL)}</strong><span class="td-count"> (${gLn})</span></td>
   </tr>`);
-
-  tbody.innerHTML = rows.join('');
-
-  // ── People level: by OB POC (live in-funnel + went-live counts) ──────────────
-  const pocBody = document.getElementById('pipeline-poc-tbody');
-  if (pocBody) {
-    const m = {};
-    const bump = (poc, k, arr) => { poc = (poc||'').trim() || 'Unassigned'; (m[poc] = m[poc] || { funnelARR:0, funnelN:0, liveARR:0, liveN:0 }); m[poc][k+'ARR'] += arr; m[poc][k+'N']++; };
-    filtered.filter(isInFunnel).forEach(r => bump(r.obPoc, 'funnel', r.arr));
-    filtered.filter(liveThisMonth).forEach(r => bump(r.obPoc, 'live', r.arr));
-    const entries = Object.entries(m).sort((a,b) => b[1].funnelARR - a[1].funnelARR);
-    let pF=0, pFn=0, pL=0, pLn=0;
-    const pocRows = entries.map(([poc, v]) => {
-      pF += v.funnelARR; pFn += v.funnelN; pL += v.liveARR; pLn += v.liveN;
-      return `<tr>
-        <td>${poc}</td>
-        <td class="td-right font-bold">${fmt$(v.funnelARR)}<span class="td-count"> (${v.funnelN})</span></td>
-        <td class="td-right font-bold text-green">${v.liveARR ? fmt$(v.liveARR) : '<span style="color:var(--faint)">—</span>'}${v.liveN ? `<span class="td-count"> (${v.liveN})</span>` : ''}</td>
-      </tr>`;
-    });
-    pocRows.push(`<tr class="row-total">
-      <td><strong>Total</strong></td>
-      <td class="td-right"><strong>${fmt$(pF)}</strong><span class="td-count"> (${pFn})</span></td>
-      <td class="td-right text-green"><strong>${fmt$(pL)}</strong><span class="td-count"> (${pLn})</span></td>
-    </tr>`);
-    pocBody.innerHTML = pocRows.join('');
-  }
+  tbody.innerHTML = html.join('');
 }
 
 function renderDoDChart(filtered) {
