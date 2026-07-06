@@ -123,6 +123,7 @@ tr:hover td { background:#F8FAFC; }
 .badge-red { background:#fee2e2; color:#991b1b; }
 
 /* Pipeline table */
+.pipeline-sublabel { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--faint); margin:2px 0 8px; }
 .pipeline-table { width:auto; min-width:0; }
 .pipeline-table td:first-child { font-weight:600; white-space:nowrap; }
 .pipeline-table td, .pipeline-table th { white-space:nowrap; padding:10px 20px; }
@@ -336,10 +337,11 @@ const EMBEDDED_DATA = {
     <div class="chart-wrap-tall"><canvas id="dod-chart"></canvas></div>
   </div>
 
-  <!-- Pipeline by Source -->
+  <!-- OB Pipeline: Overall (by source) then People level (by OB POC) -->
   <div class="section" style="margin-bottom:20px">
-    <div class="section-title">Pipeline by Source</div>
-    <div class="table-wrap">
+    <div class="section-title">OB Pipeline</div>
+    <div class="pipeline-sublabel">Overall — by Source</div>
+    <div class="table-wrap" style="margin-bottom:22px">
       <table id="pipeline-table">
         <thead>
           <tr>
@@ -349,6 +351,19 @@ const EMBEDDED_DATA = {
           </tr>
         </thead>
         <tbody id="pipeline-tbody"></tbody>
+      </table>
+    </div>
+    <div class="pipeline-sublabel">By OB POC</div>
+    <div class="table-wrap">
+      <table id="pipeline-poc-table">
+        <thead>
+          <tr>
+            <th>OB POC</th>
+            <th class="td-right">Total ARR in Funnel</th>
+            <th class="td-right">ARR Went Live This Month</th>
+          </tr>
+        </thead>
+        <tbody id="pipeline-poc-tbody"></tbody>
       </table>
     </div>
   </div>
@@ -2174,6 +2189,31 @@ function renderPipelineTable(filtered) {
   </tr>`);
 
   tbody.innerHTML = rows.join('');
+
+  // ── People level: by OB POC (live in-funnel + went-live counts) ──────────────
+  const pocBody = document.getElementById('pipeline-poc-tbody');
+  if (pocBody) {
+    const m = {};
+    const bump = (poc, k, arr) => { poc = (poc||'').trim() || 'Unassigned'; (m[poc] = m[poc] || { funnelARR:0, funnelN:0, liveARR:0, liveN:0 }); m[poc][k+'ARR'] += arr; m[poc][k+'N']++; };
+    filtered.filter(isInFunnel).forEach(r => bump(r.obPoc, 'funnel', r.arr));
+    filtered.filter(liveThisMonth).forEach(r => bump(r.obPoc, 'live', r.arr));
+    const entries = Object.entries(m).sort((a,b) => b[1].funnelARR - a[1].funnelARR);
+    let pF=0, pFn=0, pL=0, pLn=0;
+    const pocRows = entries.map(([poc, v]) => {
+      pF += v.funnelARR; pFn += v.funnelN; pL += v.liveARR; pLn += v.liveN;
+      return `<tr>
+        <td>${poc}</td>
+        <td class="td-right font-bold">${fmt$(v.funnelARR)}<span class="td-count"> (${v.funnelN})</span></td>
+        <td class="td-right font-bold text-green">${v.liveARR ? fmt$(v.liveARR) : '<span style="color:var(--faint)">—</span>'}${v.liveN ? `<span class="td-count"> (${v.liveN})</span>` : ''}</td>
+      </tr>`;
+    });
+    pocRows.push(`<tr class="row-total">
+      <td><strong>Total</strong></td>
+      <td class="td-right"><strong>${fmt$(pF)}</strong><span class="td-count"> (${pFn})</span></td>
+      <td class="td-right text-green"><strong>${fmt$(pL)}</strong><span class="td-count"> (${pLn})</span></td>
+    </tr>`);
+    pocBody.innerHTML = pocRows.join('');
+  }
 }
 
 function renderDoDChart(filtered) {
