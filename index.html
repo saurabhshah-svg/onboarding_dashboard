@@ -1635,14 +1635,14 @@ function renderDisplay(rows) {
   const topStrip = `
     <div style="display:flex;gap:10px">
       ${kpi('Total LARR', fmtC(totalLARR), `S ${fmtC(larrStudio)} · V ${fmtC(larrVini)}`, 'var(--blue)')}
-      ${kpi('Live This Month', fmtC(liveTotal), `D2D ${fmtC(liveARR)} · Ptnr ${fmtC(PARTNERSHIP.exp)}`, 'var(--green)')}
+      ${kpi('Live This Month', fmtC(liveTotal), `<b style="color:var(--text)">D2D ${fmtC(liveARR)}</b> · <b style="color:var(--text)">Ptnr ${fmtC(PARTNERSHIP.exp)}</b>`, 'var(--green)')}
       ${kpi('Went Live Yesterday', fmtC(sum(wentYestRows)), uniq(wentYestRows)+' acct', 'var(--green)')}
       ${kpi('Came In OB Yesterday', fmtC(sum(obYestRows)), uniq(obYestRows)+' acct', 'var(--blue)')}
       ${kpi('ARR Going Live Today', fmtC(todayARR), 'This wk '+fmtC(sum(weekRows)), '#16A34A')}
     </div>
     <div style="display:flex;gap:10px">
       ${kpi('Further Expected This Month', fmtC(furtherARR), `C ${fmtC(furtherConf)} · U ${fmtC(furtherARR-furtherConf)}`, 'var(--amber)')}
-      ${kpi('Projected Month-End LARR', fmtC(meLARR), 'Conf-only '+fmtC(meLARRConf), 'var(--blue)')}
+      ${kpi('Projected Month-End LARR', fmtC(meLARRConf), 'All projected '+fmtC(meLARR), 'var(--blue)')}
       ${kpi('ARR in Funnel', fmtC(funnelARR), uniq(funnelRows)+' ent', 'var(--blue)')}
       ${kpi('Blocked ARR (Upside)', fmtC(blockedARR), `S ${fmtC(sum(blockedRows.filter(isStudio)))} · V ${fmtC(sum(blockedRows.filter(isVini)))}`, '#D97706')}
       ${kpi('Avg OB Time (days)', (avgTat?avgTat.toFixed(1):'—'), `S ${stTat.toFixed(1)}d · V ${viTat.toFixed(1)}d`, 'var(--purple)')}
@@ -1675,24 +1675,9 @@ function renderDisplay(rows) {
     ${peopleTable('Vini','#065f46',byPoc(rows.filter(isVini)))}
   </div>`;
 
-  const internal = blockedRows.filter(r => (r.blockedReason||'').trim().toLowerCase() !== 'client').sort((a,b)=>b.arr-a.arr);
-  const MAXB = 8;
-  const blkBody = internal.slice(0,MAXB).map(r=>{
-    const owner=(r.unblockOwner||'').trim(), eta=(r.unblockEta||'').trim();
-    return `<tr>
-      <td>${r.entityName||r.rooftopName||'—'}</td>
-      <td style="text-align:left;color:var(--muted)">${isVini(r)?'Vini':'Studio'}</td>
-      <td>${fmtC(r.arr)}</td>
-      <td style="text-align:left;color:var(--muted)">${cleanT(r.blockedRemarks)||cleanT(r.blockedReason)||'—'}</td>
-      <td style="text-align:left">${owner||'<span style="color:var(--red)">—</span>'}</td>
-      <td style="text-align:left">${eta||'<span style="color:var(--red);font-weight:700">No ETA</span>'}</td>
-    </tr>`;
-  }).join('');
-  const blkZone = `<div style="display:flex;flex-direction:column;background:var(--card);border-radius:10px;box-shadow:var(--shadow);overflow:hidden;flex-shrink:0;max-height:36%">
-    <div class="disp-sec-hd" style="background:#b91c1c"><span>🚧 Internal Blockers to Clear</span><span style="font-size:.8em">${internal.length} accts · ${fmtC(sum(internal))}${internal.length>MAXB?' · top '+MAXB:''}</span></div>
-    <div style="overflow:hidden;flex:1">${internal.length
-      ? `<table class="disp-tbl"><thead><tr><th>Account</th><th style="text-align:left">Product</th><th>ARR</th><th style="text-align:left">Blocker</th><th style="text-align:left">Unblocking</th><th style="text-align:left">ETA</th></tr></thead><tbody>${blkBody}</tbody></table>`
-      : '<div style="padding:18px;color:var(--muted);font-size:14px">No internal blockers right now. 🎉</div>'}</div>
+  const next7Zone = `<div style="display:flex;flex-direction:column;background:var(--card);border-radius:10px;box-shadow:var(--shadow);overflow:hidden;flex-shrink:0;height:34%">
+    <div class="disp-sec-hd" style="background:#0F2350"><span>OB to Live Projection — Next 7 Days</span><span style="font-size:.8em" id="disp-next7-total"></span></div>
+    <div style="flex:1;min-height:0;position:relative;padding:6px 12px 10px"><canvas id="disp-next7-chart"></canvas></div>
   </div>`;
 
   const heading = TODAY.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
@@ -1703,7 +1688,50 @@ function renderDisplay(rows) {
     </div>
     ${topStrip}
     ${peopleZone}
-    ${blkZone}`;
+    ${next7Zone}`;
+
+  renderDispNext7(rows);
+}
+
+// Display-board version of the Next-7-days OB→Live projection (stacked by OB POC, bottom legend)
+function renderDispNext7(rows) {
+  destroyChart('disp-next7');
+  const el = document.getElementById('disp-next7-chart'); if (!el) return;
+  const days = [];
+  for (let i = 0; i < 7; i++) days.push(new Date(CY, CM, TODAY.getDate() + i));
+  const key = d => d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+  const keys = days.map(key);
+  const labels = days.map((d, i) => (i === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' })) + ' ' + d.getDate() + '/' + (d.getMonth() + 1));
+  const inWin = rows.filter(r => isInFunnel(r) && r.projectionDate && keys.includes(key(r.projectionDate)));
+  const pocMap = {};
+  inWin.forEach(r => { const p = (r.obPoc || '').trim() || 'Unassigned'; (pocMap[p] = pocMap[p] || new Array(7).fill(0))[keys.indexOf(key(r.projectionDate))] += r.arr; });
+  const pocKeys = Object.keys(pocMap).sort((a, b) => pocMap[b].reduce((s, x) => s + x, 0) - pocMap[a].reduce((s, x) => s + x, 0));
+  const COLORS = ['#2563EB','#16A34A','#D97706','#DC2626','#7C3AED','#0891B2','#DB2777','#65A30D','#64748B','#0F766E'];
+  const dayTotals = keys.map((_, i) => pocKeys.reduce((s, p) => s + pocMap[p][i], 0));
+  const fmtC = n => { n = Math.round(n); const a = Math.abs(n); return a>=1e6 ? '$'+(n/1e6).toFixed(2)+'M' : a>=1e3 ? '$'+(n/1e3).toFixed(1)+'K' : '$'+n; };
+  document.getElementById('disp-next7-total').textContent = `${fmtC(dayTotals.reduce((s,x)=>s+x,0))} · ${inWin.length} accts`;
+
+  charts['disp-next7'] = new Chart(el, {
+    type: 'bar',
+    plugins: [stackTotals],
+    data: { labels, datasets: pocKeys.map((p, i) => ({
+      label: p, data: pocMap[p], backgroundColor: COLORS[i % COLORS.length],
+      borderColor: '#fff', borderWidth: { top: 2, bottom: 0, left: 0, right: 0 }, borderRadius: 3, borderSkipped: false, stack: 'go'
+    })) },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 16 } },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 }, padding: 8 } },
+        stackTotals: { totals: dayTotals.map(t => t ? fmtC(t) : '') },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${fmtC(c.parsed.y)}` } }
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: { stacked: true, grace: '14%', ticks: { font: { size: 10 }, callback: v => '$' + (v >= 1000 ? (v/1000)+'K' : v) } }
+      }
+    }
+  });
 }
 
 // ─── EMAIL VIEW (daily vertical report) ──────────────────────
