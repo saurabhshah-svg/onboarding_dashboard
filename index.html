@@ -316,6 +316,7 @@ const EMBEDDED_DATA = {
   <!-- OB to Live Projection — Next 7 Days (stacked by OB POC) -->
   <div class="section" style="margin-bottom:20px">
     <div class="section-title">OB to Live Projection — Next 7 Days <span id="next7-total" style="font-weight:600;color:var(--muted);font-size:12px"></span></div>
+    <div id="next7-toggle" style="display:flex;gap:6px;margin:2px 0 10px;flex-wrap:wrap"></div>
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
       <div class="chart-wrap-tall" style="flex:1 1 520px;min-width:0"><canvas id="next7-chart"></canvas></div>
       <div id="next7-legend" style="flex:0 0 220px;min-width:0;font-size:12px"></div>
@@ -1676,7 +1677,9 @@ function renderDisplay(rows) {
   </div>`;
 
   const next7Zone = `<div style="display:flex;flex-direction:column;background:var(--card);border-radius:10px;box-shadow:var(--shadow);overflow:hidden;flex-shrink:0;height:34%">
-    <div class="disp-sec-hd" style="background:#0F2350"><span>OB to Live Projection — Next 7 Days</span><span style="font-size:.8em" id="disp-next7-total"></span></div>
+    <div class="disp-sec-hd" style="background:#0F2350"><span>OB to Live Projection — Next 7 Days</span>
+      <span style="display:flex;align-items:center;gap:10px"><span id="disp-next7-toggle" style="display:flex;gap:5px"></span><span style="font-size:.8em;font-weight:600" id="disp-next7-total"></span></span>
+    </div>
     <div style="flex:1;min-height:0;position:relative;padding:6px 12px 10px"><canvas id="disp-next7-chart"></canvas></div>
   </div>`;
 
@@ -1694,15 +1697,19 @@ function renderDisplay(rows) {
 }
 
 // Display-board version of the Next-7-days OB→Live projection (stacked by OB POC, bottom legend)
+let dispNext7Bucket = 'Overall', dispNext7Rows = [];
+function setDispNext7Bucket(b) { dispNext7Bucket = b; renderDispNext7(dispNext7Rows); }
 function renderDispNext7(rows) {
   destroyChart('disp-next7');
+  dispNext7Rows = rows;
   const el = document.getElementById('disp-next7-chart'); if (!el) return;
+  const tg = document.getElementById('disp-next7-toggle'); if (tg) tg.innerHTML = bucketTogglePills(dispNext7Bucket, 'setDispNext7Bucket');
   const days = [];
   for (let i = 0; i < 7; i++) days.push(new Date(CY, CM, TODAY.getDate() + i));
   const key = d => d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
   const keys = days.map(key);
   const labels = days.map((d, i) => (i === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' })) + ' ' + d.getDate() + '/' + (d.getMonth() + 1));
-  const inWin = rows.filter(r => isInFunnel(r) && r.projectionDate && keys.includes(key(r.projectionDate)));
+  const inWin = bucketOf(rows.filter(r => isInFunnel(r) && r.projectionDate && keys.includes(key(r.projectionDate))), dispNext7Bucket);
   const pocMap = {};
   inWin.forEach(r => { const p = (r.obPoc || '').trim() || 'Unassigned'; (pocMap[p] = pocMap[p] || new Array(7).fill(0))[keys.indexOf(key(r.projectionDate))] += r.arr; });
   const pocKeys = Object.keys(pocMap).sort((a, b) => pocMap[b].reduce((s, x) => s + x, 0) - pocMap[a].reduce((s, x) => s + x, 0));
@@ -2171,16 +2178,31 @@ const stackTotals = {
 
 // OB to Live Projection — next 7 days, stacked by OB POC.
 // Projected go-lives = in-funnel accounts with a Projected Live Date in [today .. today+6].
+// Confirmation-bucket toggle shared by the Next-7-days charts.
+const bucketOf = (rows, b) => b === 'Confirmed' ? rows.filter(r => (r.currentMonthConf||'').trim() === 'Confirmed')
+                            : b === 'Upside'    ? rows.filter(r => (r.currentMonthConf||'').trim() === 'Upside')
+                            : rows;
+function bucketTogglePills(current, fn) {
+  return ['Overall','Confirmed','Upside'].map(b => {
+    const a = b === current;
+    return `<button onclick="${fn}('${b}')" style="border:1px solid ${a?'var(--blue)':'var(--border)'};background:${a?'var(--blue)':'#fff'};color:${a?'#fff':'var(--muted)'};border-radius:14px;padding:3px 13px;font-size:11.5px;font-weight:600;cursor:pointer">${b}</button>`;
+  }).join('');
+}
+let next7Bucket = 'Overall', next7Rows = [];
+function setNext7Bucket(b) { next7Bucket = b; renderNext7Projection(next7Rows); }
+
 function renderNext7Projection(filtered) {
   destroyChart('next7');
+  next7Rows = filtered;
   const el = document.getElementById('next7-chart'); if (!el) return;
+  const tg = document.getElementById('next7-toggle'); if (tg) tg.innerHTML = bucketTogglePills(next7Bucket, 'setNext7Bucket');
   const days = [];
   for (let i = 0; i < 7; i++) days.push(new Date(CY, CM, TODAY.getDate() + i));
   const key = d => d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
   const keys = days.map(key);
   const labels = days.map((d, i) => (i === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' })) + ' ' + d.getDate() + '/' + (d.getMonth() + 1));
 
-  const inWin = filtered.filter(r => isInFunnel(r) && r.projectionDate && keys.includes(key(r.projectionDate)));
+  const inWin = bucketOf(filtered.filter(r => isInFunnel(r) && r.projectionDate && keys.includes(key(r.projectionDate))), next7Bucket);
   const pocMap = {};
   inWin.forEach(r => {
     const p = (r.obPoc || '').trim() || 'Unassigned';
