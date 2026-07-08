@@ -321,6 +321,7 @@ const EMBEDDED_DATA = {
       <div class="chart-wrap-tall" style="flex:1 1 520px;min-width:0"><canvas id="next7-chart"></canvas></div>
       <div id="next7-legend" style="flex:0 0 220px;min-width:0;font-size:12px"></div>
     </div>
+    <div id="next7-accounts" style="margin-top:16px"></div>
   </div>
 
   <!-- Scheduled to Go-Live Today -->
@@ -2256,6 +2257,39 @@ function renderNext7Projection(filtered) {
         <span style="flex:1;min-width:0;color:var(--muted)">${p}</span>
         <b style="color:var(--text)">${fmt$(tot)}</b></div>`;
     }).join('') : `<div style="color:var(--faint)">No projected go-lives in the next 7 days.</div>`);
+
+  // ── Day-by-day account list, split Studio / Vini (follows the toggle bucket) ──
+  const acc = document.getElementById('next7-accounts');
+  if (acc) {
+    const perDay = keys.map(() => ({ studio: [], vini: [] }));
+    inWin.forEach(r => { perDay[keys.indexOf(key(r.projectionDate))][r.source === 'vini' ? 'vini' : 'studio'].push(r); });
+    const nm = r => r.entityName || r.rooftopName || '—';
+    const sumA = a => a.reduce((s, r) => s + r.arr, 0);
+    const cell = list => list.length
+      ? list.slice().sort((a,b)=>b.arr-a.arr).map(r =>
+          `<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px solid var(--bg)">
+             <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nm(r)}${r.obPoc?` <span style="color:var(--faint)">· ${r.obPoc}</span>`:''}</span>
+             <b style="color:var(--text);white-space:nowrap">${fmtK(r.arr)}</b>
+           </div>`).join('')
+      : '<span style="color:var(--faint)">—</span>';
+    const colHd = (label, list, color) => `${label} <span style="color:var(--muted);font-weight:600">${list.length}${list.length?` · ${fmtK(sumA(list))}`:''}</span>`;
+    const rows = keys.map((_, i) => {
+      const d = days[i], D = perDay[i];
+      if (!D.studio.length && !D.vini.length) return '';
+      const dayLbl = (i === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' })) + ' ' + d.getDate() + '/' + (d.getMonth() + 1);
+      return `<tr style="vertical-align:top">
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:700;white-space:nowrap">${dayLbl}<div style="font-size:11px;color:var(--muted);font-weight:600">${fmtK(sumA(D.studio)+sumA(D.vini))}</div></td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);width:44%"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#1e40af;margin-bottom:3px">${colHd('Studio', D.studio)}</div>${cell(D.studio)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);width:44%"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#065f46;margin-bottom:3px">${colHd('Vini', D.vini)}</div>${cell(D.vini)}</td>
+      </tr>`;
+    }).join('');
+    acc.innerHTML = rows
+      ? `<div class="pipeline-sublabel">Projected accounts by day</div>
+         <div class="table-wrap"><table style="width:100%;border-collapse:collapse;font-size:12.5px">
+         <thead><tr style="background:#F8FAFC"><th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Day</th><th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Studio</th><th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Vini</th></tr></thead>
+         <tbody>${rows}</tbody></table></div>`
+      : '';
+  }
 }
 
 // Last-month LARR walk (bridge), live-computed each load. Whole-company (all-up).
