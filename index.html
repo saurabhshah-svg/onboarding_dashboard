@@ -2258,33 +2258,54 @@ function renderNext7Projection(filtered) {
         <b style="color:var(--text)">${fmt$(tot)}</b></div>`;
     }).join('') : `<div style="color:var(--faint)">No projected go-lives in the next 7 days.</div>`);
 
-  // ── Day-by-day account list, split Studio / Vini (follows the toggle bucket) ──
+  // ── Day-by-day account list (collapsed; click a day to expand) ───────────────
+  // Studio: rooftops clubbed under Enterprise · Vini: agents clubbed under Enterprise.
   const acc = document.getElementById('next7-accounts');
   if (acc) {
     const perDay = keys.map(() => ({ studio: [], vini: [] }));
     inWin.forEach(r => { perDay[keys.indexOf(key(r.projectionDate))][r.source === 'vini' ? 'vini' : 'studio'].push(r); });
-    const nm = r => r.entityName || r.rooftopName || '—';
     const sumA = a => a.reduce((s, r) => s + r.arr, 0);
-    const cell = list => list.length
-      ? list.slice().sort((a,b)=>b.arr-a.arr).map(r =>
-          `<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px solid var(--bg)">
-             <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nm(r)}${r.obPoc?` <span style="color:var(--faint)">· ${r.obPoc}</span>`:''}</span>
-             <b style="color:var(--text);white-space:nowrap">${fmtK(r.arr)}</b>
-           </div>`).join('')
-      : '<span style="color:var(--faint)">—</span>';
-    const colHd = (label, list, color) => `${label} <span style="color:var(--muted);font-weight:600">${list.length}${list.length?` · ${fmtK(sumA(list))}`:''}</span>`;
+    const ct = v => (typeof cleanTreeTxt === 'function' ? cleanTreeTxt(v) : (v || '')).trim();
+    const groupEnt = (list, isV) => {
+      const m = {};
+      list.forEach(r => {
+        const e = r.entityName || r.rooftopName || '—';
+        const g = m[e] || (m[e] = { name: e, arr: 0, items: new Set(), pocs: new Set() });
+        g.arr += r.arr;
+        if (r.obPoc) g.pocs.add(r.obPoc);
+        const item = isV ? ct(r.agent) : ct(r.rooftopName) || ct(r.entityName);
+        if (item) g.items.add(item);
+      });
+      return Object.values(m).sort((a, b) => b.arr - a.arr);
+    };
+    const entList = (list, isV) => list.length ? groupEnt(list, isV).map(g => `
+      <div style="padding:4px 0;border-bottom:1px solid var(--bg)">
+        <div style="display:flex;justify-content:space-between;gap:8px">
+          <span style="font-weight:600">${g.name} <span style="color:var(--faint);font-weight:500">(${g.items.size} ${isV?'agent':'rooftop'}${g.items.size===1?'':'s'})</span></span>
+          <b style="white-space:nowrap">${fmtK(g.arr)}</b>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">${[...g.items].join(', ') || '—'}${g.pocs.size ? ` <span style="color:var(--faint)">· POC ${[...g.pocs].join(', ')}</span>` : ''}</div>
+      </div>`).join('') : '<span style="color:var(--faint)">—</span>';
+    const colHd = (label, color, list) => `<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:${color};margin-bottom:3px">${label} <span style="color:var(--muted)">${list.length}${list.length?` · ${fmtK(sumA(list))}`:''}</span></div>`;
     const rows = keys.map((_, i) => {
       const d = days[i], D = perDay[i];
       if (!D.studio.length && !D.vini.length) return '';
+      const id = 'n7day-' + i;
       const dayLbl = (i === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' })) + ' ' + d.getDate() + '/' + (d.getMonth() + 1);
-      return `<tr style="vertical-align:top">
-        <td style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:700;white-space:nowrap">${dayLbl}<div style="font-size:11px;color:var(--muted);font-weight:600">${fmtK(sumA(D.studio)+sumA(D.vini))}</div></td>
-        <td style="padding:8px 10px;border-bottom:1px solid var(--border);width:44%"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#1e40af;margin-bottom:3px">${colHd('Studio', D.studio)}</div>${cell(D.studio)}</td>
-        <td style="padding:8px 10px;border-bottom:1px solid var(--border);width:44%"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#065f46;margin-bottom:3px">${colHd('Vini', D.vini)}</div>${cell(D.vini)}</td>
+      const summary = `<tr onclick="toggleTree('${id}',this)" style="cursor:pointer">
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:700;white-space:nowrap"><span class="tree-caret" style="display:inline-block;width:14px;color:var(--muted)">▸</span>${dayLbl} <span style="color:var(--blue)">· ${fmtK(sumA(D.studio)+sumA(D.vini))}</span></td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);color:var(--muted)">Studio <b style="color:var(--text)">${D.studio.length}</b> · ${fmtK(sumA(D.studio))}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);color:var(--muted)">Vini <b style="color:var(--text)">${D.vini.length}</b> · ${fmtK(sumA(D.vini))}</td>
       </tr>`;
+      const detail = `<tr class="${id}" style="display:none;background:#fbfcfe">
+        <td style="border-bottom:1px solid var(--border)"></td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top">${colHd('Studio','#1e40af',D.studio)}${entList(D.studio,false)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top">${colHd('Vini','#065f46',D.vini)}${entList(D.vini,true)}</td>
+      </tr>`;
+      return summary + detail;
     }).join('');
     acc.innerHTML = rows
-      ? `<div class="pipeline-sublabel">Projected accounts by day</div>
+      ? `<div class="pipeline-sublabel">Projected accounts by day <span style="font-weight:500;color:var(--faint);text-transform:none;letter-spacing:0">— click a day to expand</span></div>
          <div class="table-wrap"><table style="width:100%;border-collapse:collapse;font-size:12.5px">
          <thead><tr style="background:#F8FAFC"><th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Day</th><th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Studio</th><th style="text-align:left;padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted)">Vini</th></tr></thead>
          <tbody>${rows}</tbody></table></div>`
