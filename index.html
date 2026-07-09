@@ -631,10 +631,20 @@ const filters = {
 };
 
 // ─── Date helpers ────────────────────────────────────────────
-const TODAY = new Date();
-const CY = TODAY.getFullYear(), CM = TODAY.getMonth();
-const NY = CM===11?CY+1:CY, NM = (CM+1)%12;
-const CUR_YM = CY + '-' + String(CM + 1).padStart(2, '0');  // e.g. "2026-06" — matches churn sheet Col E
+// NOTE: these are `let`, not `const` — the board stays open for days (esp. the TV
+// Display) and auto-refreshes data every 4h, so the "today" reference must be
+// re-synced on each refresh (see syncClock() called from loadAllData). Otherwise
+// "yesterday"/"today"/"this month" go stale after a midnight boundary.
+let TODAY = new Date();
+let CY = TODAY.getFullYear(), CM = TODAY.getMonth();
+let NY = CM===11?CY+1:CY, NM = (CM+1)%12;
+let CUR_YM = CY + '-' + String(CM + 1).padStart(2, '0');  // e.g. "2026-06" — matches churn sheet Col E
+function syncClock() {
+  TODAY = new Date();
+  CY = TODAY.getFullYear(); CM = TODAY.getMonth();
+  NY = CM===11?CY+1:CY; NM = (CM+1)%12;
+  CUR_YM = CY + '-' + String(CM + 1).padStart(2, '0');
+}
 
 // Sum current-month churn/contraction ARR from the CS churn sheet (array-of-arrays from parseCSV).
 // Col D (idx 3) = ARR, Col E (idx 4) = Churn/Contraction Month (YYYY-MM). Note/header rows are
@@ -1170,6 +1180,7 @@ async function fetchPartnership() {
 }
 
 async function loadAllData() {
+  syncClock();   // re-sync "today" each load/refresh so date-relative metrics don't go stale on a long-open tab
   showLoadingBanner('⟳ Loading data...');
   try {
     let viniCSV, amerCSV, apacCSV, syncedAt;
