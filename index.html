@@ -176,12 +176,19 @@ tr:hover td { background:#F8FAFC; }
 .disp-kpi-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); }
 .disp-kpi-val { font-size:clamp(20px,2.4vw,34px); font-weight:800; color:var(--text); line-height:1.05; margin-top:2px; }
 .disp-tbl { width:100%; border-collapse:collapse; }
-.disp-tbl th { font-size:clamp(9px,.8vw,12px); text-transform:uppercase; letter-spacing:.3px; color:var(--muted); text-align:right; padding:5px 8px; border-bottom:2px solid var(--border); }
+.disp-tbl th { font-size:clamp(9px,.8vw,12px); text-transform:uppercase; letter-spacing:.3px; color:var(--muted); text-align:right; padding:5px 8px; border-bottom:2px solid var(--border); position:sticky; top:0; background:#fff; z-index:2; }
 .disp-tbl th:first-child { text-align:left; }
 .disp-tbl td { font-size:clamp(11px,1vw,15px); padding:5px 8px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap; }
 .disp-tbl td:first-child { text-align:left; font-weight:600; }
-.disp-tbl tr.disp-total td { font-weight:800; background:#F8FAFC; border-top:2px solid var(--border); }
+.disp-tbl tr.disp-total td { font-weight:800; background:#EEF2F7; border-top:2px solid var(--border); position:sticky; bottom:0; z-index:2; }
+/* Highlight the Live MTD column (2nd) so the eye lands on it */
+.disp-tbl th:nth-child(2), .disp-tbl td:nth-child(2) { background:#ECFDF3; }
+.disp-tbl tr.disp-total td:nth-child(2) { background:#D6F5E0; }
+.disp-scroll { flex:1; min-height:0; overflow-y:auto; }
 .disp-sec-hd { color:#fff; font-weight:800; font-size:clamp(13px,1.2vw,17px); padding:7px 12px; border-radius:8px 8px 0 0; display:flex; justify-content:space-between; align-items:center; }
+/* Highlighted KPI card (Live This Month) — stands out among the strip */
+.disp-card.disp-hl { background:#ECFDF3; border:2px solid var(--green); box-shadow:0 0 0 3px rgba(22,163,74,.15); }
+.disp-card.disp-hl .disp-kpi-label { color:var(--green); }
 </style>
 </head>
 <body>
@@ -1650,11 +1657,11 @@ function renderDisplay(rows) {
   const viTat = avg(rows.filter(isVini).map(r=>r.liveTat).filter(x=>x>0));
   const avgTat = avg(rows.map(r=>r.liveTat).filter(x=>x>0));
 
-  const kpi = (label,val,sub,accent) => `<div class="disp-card" style="flex:1;border-left-color:${accent}"><div class="disp-kpi-label">${label}</div><div class="disp-kpi-val">${val}</div>${sub?`<div style="font-size:clamp(9px,.8vw,12px);color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub}</div>`:''}</div>`;
+  const kpi = (label,val,sub,accent,hl) => `<div class="disp-card${hl?' disp-hl':''}" style="flex:1;border-left-color:${accent}"><div class="disp-kpi-label">${label}</div><div class="disp-kpi-val">${val}</div>${sub?`<div style="font-size:clamp(9px,.8vw,12px);color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub}</div>`:''}</div>`;
   const topStrip = `
     <div style="display:flex;gap:10px">
       ${kpi('Total LARR', fmtC(totalLARR), `S ${fmtC(larrStudio)} · V ${fmtC(larrVini)}`, 'var(--blue)')}
-      ${kpi('Live This Month', fmtC(liveTotal), `<b style="color:var(--text)">D2D ${fmtC(liveARR)}</b> · <b style="color:var(--text)">Ptnr ${fmtC(PARTNERSHIP.exp)}</b>`, 'var(--green)')}
+      ${kpi('Live This Month', fmtC(liveTotal), `<b style="color:var(--text)">D2D ${fmtC(liveARR)}</b> · <b style="color:var(--text)">Ptnr ${fmtC(PARTNERSHIP.exp)}</b>`, 'var(--green)', true)}
       ${kpi('Went Live Yesterday', fmtC(sum(wentYestRows)), uniq(wentYestRows)+' acct', 'var(--green)')}
       ${kpi('Came In OB Yesterday', fmtC(sum(obYestRows)), uniq(obYestRows)+' acct', 'var(--blue)')}
       ${kpi('ARR Going Live Today', fmtC(todayARR), 'This wk '+fmtC(sum(weekRows)), '#16A34A')}
@@ -1683,7 +1690,7 @@ function renderDisplay(rows) {
     const body = pocs.map(p=>`<tr><td>${p.poc}</td><td style="color:var(--green)">${cv(p.live)}</td><td style="color:#0d9488">${cv(p.wentYest)}</td><td style="color:var(--amber)">${cv(p.further)}</td><td style="color:var(--red)">${cv(p.blocked)}</td><td style="color:var(--blue)">${cv(p.today)}</td></tr>`).join('');
     return `<div style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--card);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
       <div class="disp-sec-hd" style="background:${color}"><span>${label}</span></div>
-      <div style="overflow:hidden;flex:1"><table class="disp-tbl">
+      <div class="disp-scroll"><table class="disp-tbl">
         <thead><tr><th>OB POC</th><th>Live MTD</th><th>Went Yest</th><th>Further Exp</th><th>In Blocker</th><th>Live Today</th></tr></thead>
         <tbody>${body}<tr class="disp-total"><td>TOTAL</td><td>${cv(t.live)}</td><td>${cv(t.wentYest)}</td><td>${cv(t.further)}</td><td>${cv(t.blocked)}</td><td>${cv(t.today)}</td></tr></tbody>
       </table></div>
