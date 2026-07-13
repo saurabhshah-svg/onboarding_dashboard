@@ -288,7 +288,7 @@ const EMBEDDED_DATA = {
       <div class="kpi-tags kpi-bottom" id="kpi-live-tags"></div>
     </div>
     <div class="kpi-card card-amber">
-      <div class="kpi-label">Expected Go-Live<span class="kpi-info" tabindex="0">i<span class="kpi-tip">Sum of ARR for accounts in <b>OB Initiated / In Implementation</b> stage (across all sheets) with a <b>Projected Live Date in the current month</b>. May include both Confirmed and Upside accounts.</span></span></div>
+      <div class="kpi-label">Expected Go-Live<span class="kpi-info" tabindex="0">i<span class="kpi-tip">Sum of ARR for accounts in <b>OB Initiated / In Implementation</b> stage (across all sheets) with a <b>Projected Live Date in the current month</b>. May include both Confirmed and Blocked accounts.</span></span></div>
       <div class="kpi-value" id="kpi-exp-n">—</div>
       <div class="kpi-sub" id="kpi-exp-arr">—</div>
       <div class="kpi-tags kpi-bottom" id="kpi-exp-tags"></div>
@@ -300,7 +300,7 @@ const EMBEDDED_DATA = {
       <div class="kpi-tags kpi-bottom" id="kpi-me-larr-tags"></div>
     </div>
     <div class="kpi-card card-amber">
-      <div class="kpi-label">Blocked ARR (Upside)</div>
+      <div class="kpi-label">Blocked ARR</div>
       <div class="kpi-value" id="kpi-blocked-arr">—</div>
       <div class="kpi-sub" id="kpi-blocked-sub"></div>
       <div class="kpi-tags kpi-bottom" id="kpi-blocked-tags"></div>
@@ -368,7 +368,7 @@ const EMBEDDED_DATA = {
 
   <!-- POC-Level Pendency Overview -->
   <div class="section" style="margin-bottom:20px">
-    <div class="section-title">POC-Level Pendency Overview <span style="font-weight:500;color:var(--muted);font-size:12px">— in-OB ARR rolled up by POC → Studio/Vini → Projection Month → Confirmed/Upside</span></div>
+    <div class="section-title">POC-Level Pendency Overview <span style="font-weight:500;color:var(--muted);font-size:12px">— in-OB ARR rolled up by POC → Studio/Vini → Projection Month → Confirmed/Blocked</span></div>
     <div id="poc-pendency" style="max-height:70vh;overflow:auto"></div>
   </div>
 
@@ -388,7 +388,7 @@ const EMBEDDED_DATA = {
       <div class="kpi-sub" id="st-kpi-live-arr">—</div>
     </div>
     <div class="kpi-card card-amber">
-      <div class="kpi-label">Expected Go-Live<span class="kpi-info" tabindex="0">i<span class="kpi-tip">Sum of ARR for accounts in <b>OB Initiated / In Implementation</b> stage (across all sheets) with a <b>Projected Live Date in the current month</b>. May include both Confirmed and Upside accounts.</span></span></div>
+      <div class="kpi-label">Expected Go-Live<span class="kpi-info" tabindex="0">i<span class="kpi-tip">Sum of ARR for accounts in <b>OB Initiated / In Implementation</b> stage (across all sheets) with a <b>Projected Live Date in the current month</b>. May include both Confirmed and Blocked accounts.</span></span></div>
       <div class="kpi-value" id="st-kpi-exp-n">—</div>
       <div class="kpi-sub" id="st-kpi-exp-arr">—</div>
     </div>
@@ -438,7 +438,7 @@ const EMBEDDED_DATA = {
       <div class="kpi-sub" id="vi-kpi-live-arr">—</div>
     </div>
     <div class="kpi-card card-amber">
-      <div class="kpi-label">Expected Go-Live<span class="kpi-info" tabindex="0">i<span class="kpi-tip">Sum of ARR for accounts in <b>OB Initiated / In Implementation</b> stage (across all sheets) with a <b>Projected Live Date in the current month</b>. May include both Confirmed and Upside accounts.</span></span></div>
+      <div class="kpi-label">Expected Go-Live<span class="kpi-info" tabindex="0">i<span class="kpi-tip">Sum of ARR for accounts in <b>OB Initiated / In Implementation</b> stage (across all sheets) with a <b>Projected Live Date in the current month</b>. May include both Confirmed and Blocked accounts.</span></span></div>
       <div class="kpi-value" id="vi-kpi-exp-n">—</div>
       <div class="kpi-sub" id="vi-kpi-exp-arr">—</div>
     </div>
@@ -739,6 +739,12 @@ function liveThisMonth(r) { return isLive(r) && sameMonth(r.goLiveDate, CM, CY);
 function expThisMonth(r) { return !isLive(r) && !isDropped(r) && sameMonth(r.projectionDate, CM, CY); }
 function expNextMonth(r) { return !isLive(r) && !isDropped(r) && sameMonth(r.projectionDate, NM, NY); }
 function droppedThisMonth(r) { return isDropped(r) && (sameMonth(r.goLiveDate,CM,CY)||sameMonth(r.projectionDate,CM,CY)); }
+// Current-Month-Confirmations bucket. The sheet's value may read 'Upside' OR 'Blocked' — both
+// mean the same "Blocked" bucket (needs unblocking). Anything else non-'Confirmed' is Unconfirmed.
+// The UI says "Blocked" everywhere (never "Upside").
+function confBucket(r) { const v=(r.currentMonthConf||'').trim().toLowerCase(); return v==='confirmed' ? 'Confirmed' : (v==='upside'||v==='blocked') ? 'Blocked' : 'Unconfirmed'; }
+function isBlockedConf(r) { return confBucket(r) === 'Blocked'; }
+function isConfirmedConf(r) { return confBucket(r) === 'Confirmed'; }
 function srcCat(r, forLive) {
   const v = forLive ? r.liveFrom : r.inObFrom;
   return v || 'New Sales';
@@ -1283,7 +1289,7 @@ function pocStats(rows) {
   const isIndep     = r => /independent/i.test(r.franchiseType||'');
   const isGroup     = r => /group/i.test(r.groupType||'');
   const isSingle    = r => /single/i.test(r.groupType||'');
-  const isBlocked   = r => r.currentMonthConf === 'Upside';
+  const isBlocked   = isBlockedConf;
   return {
     arr:         rows.reduce((s,r)=>s+r.arr,0),
     ents:        new Set(rows.map(r=>r.entityName)).size,
@@ -1412,10 +1418,10 @@ function renderAnalytics(rows) {
 // ─── PROGRAMS — Unblock OB → Live (Studio / Vini) ────────────
 // Story per segment:
 //   Bucket 1 "Went Live + Confirmed this month" — no blockers, OB just needs to push.
-//   Bucket 2 "Upside — needs unblock program" — each Upside line item needs an unblock
+//   Bucket 2 "Blocked — needs unblock program" — each Blocked line item needs an unblock
 //     owner + ETA (the 2 new sheet columns). Rows missing either are FLAGGED (no program).
-function isUpside(r)    { return r.currentMonthConf === 'Upside'; }
-function isConfirmed(r) { return r.currentMonthConf === 'Confirmed'; }
+function isUpside(r)    { return isBlockedConf(r); }
+function isConfirmed(r) { return isConfirmedConf(r); }
 function hasVal(v)      { return !!(v && String(v).trim()); }
 function hasProgram(r)  { return hasVal(r.unblockOwner) && hasVal(r.unblockEta); }
 // Hide spreadsheet error values (#REF!, #N/A, …) so broken cells don't show as text.
@@ -1446,7 +1452,7 @@ function programSummaryBar(rows) {
     </div>`;
   return `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px">
     ${card('Push to Close (Live + Confirmed)', fmt$(pushARR), (wentLive.length+confirmed.length) + ' accounts this month', '#16a34a')}
-    ${card('Upside ARR to Unblock', fmt$(upsideARR), upside.length + ' accounts need a program', '#d97706')}
+    ${card('Blocked ARR to Unblock', fmt$(upsideARR), upside.length + ' accounts need a program', '#d97706')}
     ${card('⚠ Flagged — No Program', fmt$(flagARR), flagged.length + ' of ' + upside.length + ' missing owner / ETA', '#dc2626')}
   </div>`;
 }
@@ -1478,7 +1484,7 @@ function programSegment(label, color, segRows) {
       }).join('')}</tbody>
     </table>` : '<div style="padding:16px;color:var(--muted);font-size:13px">No live / confirmed accounts this month.</div>';
 
-  // Bucket 2: Upside — needs unblock program
+  // Bucket 2: Blocked — needs unblock program
   const upsideTable = upside.length ? `
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
       <thead><tr style="background:#F8FAFC">${th('Account')}${th('ARR',true)}${th('OB POC')}${th('Blocked Remarks')}${th('Unblock Owner')}${th('ETA')}${th('Program')}</tr></thead>
@@ -1499,18 +1505,18 @@ function programSegment(label, color, segRows) {
             : '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#fee2e2;color:#dc2626">⚠ '+flagTxt+'</span>'}</td>
         </tr>`;
       }).join('')}</tbody>
-    </table>` : '<div style="padding:16px;color:var(--muted);font-size:13px">No Upside accounts to unblock. 🎉</div>';
+    </table>` : '<div style="padding:16px;color:var(--muted);font-size:13px">No Blocked accounts to unblock. 🎉</div>';
 
   return `
   <div class="section" style="margin-bottom:28px;overflow:hidden">
     <div style="background:${color};color:#fff;padding:12px 18px;font-size:15px;font-weight:800;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <span>${label}</span>
-      <span style="font-size:12px;font-weight:600;opacity:.95">Upside to unblock: ${fmt$(uARR)} · ${upside.length} accts${flaggedN?` · <span style="color:#fecaca">⚠ ${flaggedN} unmapped</span>`:''}</span>
+      <span style="font-size:12px;font-weight:600;opacity:.95">Blocked to unblock: ${fmt$(uARR)} · ${upside.length} accts${flaggedN?` · <span style="color:#fecaca">⚠ ${flaggedN} unmapped</span>`:''}</span>
     </div>
     <div style="padding:16px 18px">
       <div style="font-size:13px;font-weight:700;color:var(--text);margin:4px 0 8px">✅ Went Live + Confirmed this month — push to close <span style="font-weight:500;color:var(--muted)">(${bucketA.length} accts · ${fmt$(aARR)})</span></div>
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">${bucketAtable}</div>
-      <div style="font-size:13px;font-weight:700;color:var(--text);margin:20px 0 8px">⚠ Upside — needs unblock program <span style="font-weight:500;color:var(--muted)">(${upside.length} accts · ${fmt$(uARR)} · ${flaggedN} unmapped)</span></div>
+      <div style="font-size:13px;font-weight:700;color:var(--text);margin:20px 0 8px">⚠ Blocked — needs unblock program <span style="font-weight:500;color:var(--muted)">(${upside.length} accts · ${fmt$(uARR)} · ${flaggedN} unmapped)</span></div>
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">${upsideTable}</div>
     </div>
   </div>`;
@@ -1523,7 +1529,7 @@ function renderSlack(rows) {
   const isStudio = r => r.source!=='vini', isVini = r => r.source==='vini';
 
   const liveRows = rows.filter(liveThisMonth), expRows = rows.filter(expThisMonth), dropRows = rows.filter(droppedThisMonth);
-  const blockedRows = rows.filter(r => r.currentMonthConf === 'Upside');
+  const blockedRows = rows.filter(isBlockedConf);
   const liveARR = sum(liveRows), expARR = sum(expRows);
   const expConf = sum(expRows.filter(r => r.currentMonthConf === 'Confirmed'));  // confirmed-to-go-live only
   const liveTotal = liveARR + PARTNERSHIP.exp;   // Live this month incl. partnership expansion
@@ -1641,7 +1647,7 @@ function renderDisplay(rows) {
   const todayRows = rows.filter(r => isInFunnel(r) && isToday(r.projectionDate));
   const weekRows = rows.filter(r => isInFunnel(r) && inWk(r.projectionDate));
   const furtherRows = expRows.filter(r => !isToday(r.projectionDate));
-  const blockedRows = rows.filter(r => r.currentMonthConf === 'Upside');
+  const blockedRows = rows.filter(isBlockedConf);
   const wentYestRows = rows.filter(r => isLive(r) && isYest(r.goLiveDate));
   const obYestRows = rows.filter(r => isYest(r.obCallDate));
   const liveARR=sum(liveRows), furtherARR=sum(furtherRows), todayARR=sum(todayRows), blockedARR=sum(blockedRows), funnelARR=sum(funnelRows);
@@ -1670,7 +1676,7 @@ function renderDisplay(rows) {
       ${kpi('Further Expected This Month', fmtC(furtherARR), `C ${fmtC(furtherConf)} · U ${fmtC(furtherARR-furtherConf)}`, 'var(--amber)')}
       ${kpi('Projected Month-End LARR', fmtC(meLARRConf), 'All projected '+fmtC(meLARR), 'var(--blue)')}
       ${kpi('ARR in Funnel', fmtC(funnelARR), uniq(funnelRows)+' ent', 'var(--blue)')}
-      ${kpi('Blocked ARR (Upside)', fmtC(blockedARR), `S ${fmtC(sum(blockedRows.filter(isStudio)))} · V ${fmtC(sum(blockedRows.filter(isVini)))}`, '#D97706')}
+      ${kpi('Blocked ARR', fmtC(blockedARR), `S ${fmtC(sum(blockedRows.filter(isStudio)))} · V ${fmtC(sum(blockedRows.filter(isVini)))}`, '#D97706')}
       ${kpi('Avg OB Time (days)', (avgTat?avgTat.toFixed(1):'—'), `S ${stTat.toFixed(1)}d · V ${viTat.toFixed(1)}d`, 'var(--purple)')}
     </div>`;
 
@@ -1680,7 +1686,7 @@ function renderDisplay(rows) {
     prod.filter(liveThisMonth).forEach(r=>add(r.obPoc,'live',r.arr));
     prod.filter(r=>isLive(r)&&isYest(r.goLiveDate)).forEach(r=>add(r.obPoc,'wentYest',r.arr));
     prod.filter(r=>expThisMonth(r)&&!isToday(r.projectionDate)).forEach(r=>add(r.obPoc,'further',r.arr));
-    prod.filter(r=>r.currentMonthConf==='Upside').forEach(r=>add(r.obPoc,'blocked',r.arr));
+    prod.filter(isBlockedConf).forEach(r=>add(r.obPoc,'blocked',r.arr));
     prod.filter(r=>isInFunnel(r)&&isToday(r.projectionDate)).forEach(r=>add(r.obPoc,'today',r.arr));
     return Object.values(m).sort((a,b)=>(b.live-a.live)||(b.further-a.further)||(b.blocked-a.blocked));
   };
@@ -1795,7 +1801,7 @@ function renderEmailView(rows) {
   const dropRows    = rows.filter(droppedThisMonth);
   const expRows     = rows.filter(expThisMonth);
   const funnelRows  = rows.filter(isInFunnel);
-  const blockedRows = rows.filter(r => r.currentMonthConf === 'Upside');
+  const blockedRows = rows.filter(isBlockedConf);
   const liveARR=sum(liveRows), dropARR=sum(dropRows), expARR=sum(expRows), funnelARR=sum(funnelRows), blockedARR=sum(blockedRows);
   const liveTotal  = liveARR + PARTNERSHIP.exp;   // incl. partnership expansion
   const totalLARR  = CURR_BASE + liveARR - dropARR - REVENUE_LOSS + PARTNERSHIP.net;
@@ -1838,7 +1844,7 @@ function renderEmailView(rows) {
     C('Further Expected Go-Live This Month', fmtC(furtherARR), `C ${fmtC(furtherConf)} · U ${fmtC(furtherARR - furtherConf)}`, '#D97706'),
     C('Projected Month-End LARR', fmtC(meLARR), 'Confirmed-only ' + fmtC(meLARRConf), '#2563EB'),
     C('ARR in Funnel', fmtC(funnelARR), uniq(funnelRows) + ' enterprises', '#2563EB'),
-    C('Blocked ARR (Upside)', fmtC(blockedARR), `S ${fmtC(sum(blockedRows.filter(isStudio)))} · V ${fmtC(sum(blockedRows.filter(isVini)))}`, '#D97706'),
+    C('Blocked ARR', fmtC(blockedARR), `S ${fmtC(sum(blockedRows.filter(isStudio)))} · V ${fmtC(sum(blockedRows.filter(isVini)))}`, '#D97706'),
     C('Avg OB Time (days)', (avgTat ? avgTat.toFixed(1) : '—'), `S ${stTat.toFixed(1)}d · V ${viTat.toFixed(1)}d`, '#7C3AED')
   ];
   // 2 cards per row as a table (email clients don't do CSS grid)
@@ -1897,9 +1903,9 @@ function renderOverview(filtered) {
   const expRows     = filtered.filter(expThisMonth);
   const funnelRows  = filtered.filter(isInFunnel);
 
-  // Blocked ARR = rows where Current Month Confirmations = 'Upside'
-  // (accounts in OB funnel flagged as upside — not yet confirmed to go live this month)
-  const blockedRows   = filtered.filter(r => r.currentMonthConf === 'Upside');
+  // Blocked ARR = rows where Current Month Confirmations = 'Upside'/'Blocked' (isBlockedConf)
+  // (accounts in OB funnel flagged as blocked — not yet confirmed to go live this month)
+  const blockedRows   = filtered.filter(isBlockedConf);
   const blockedARR    = blockedRows.reduce((s,r)=>s+r.arr, 0);
   const blockedStudio = blockedRows.filter(r=>r.source!=='vini').reduce((s,r)=>s+r.arr,0);
   const blockedVini   = blockedRows.filter(r=>r.source==='vini').reduce((s,r)=>s+r.arr,0);
@@ -1958,11 +1964,10 @@ function renderOverview(filtered) {
     `<div class="kpi-grp">${kgrp('By Channel', kpill('D2D', fmt$(liveARR)) + kpill('Partnership', fmt$(partExp)))}</div>`;
   document.getElementById('kpi-live-tags').innerHTML = kprod(liveStudioD2D + PARTNERSHIP.expStudio, liveViniD2D + PARTNERSHIP.expVini);
 
-  // ── Expected Go-Live: breakdown by confirmation status (Confirmed vs Upside) ──
-  const expByConf = { Confirmed:{arr:0,ents:new Set()}, Upside:{arr:0,ents:new Set()}, Unconfirmed:{arr:0,ents:new Set()} };
+  // ── Expected Go-Live: breakdown by confirmation status (Confirmed vs Blocked) ──
+  const expByConf = { Confirmed:{arr:0,ents:new Set()}, Blocked:{arr:0,ents:new Set()}, Unconfirmed:{arr:0,ents:new Set()} };
   expRows.forEach(r => {
-    const k = r.currentMonthConf === 'Confirmed' ? 'Confirmed'
-            : r.currentMonthConf === 'Upside'    ? 'Upside' : 'Unconfirmed';
+    const k = confBucket(r);
     expByConf[k].arr += r.arr;
     expByConf[k].ents.add(r.entityName || r.rooftopName || '?');
   });
@@ -1970,11 +1975,11 @@ function renderOverview(filtered) {
   const expEntCount = uniqEnts(expRows);
   const expStudio = expRows.filter(r=>r.source!=='vini').reduce((s,r)=>s+r.arr,0);
   const expVini   = expRows.filter(r=>r.source==='vini').reduce((s,r)=>s+r.arr,0);
-  const confColors = { Confirmed:'var(--green)', Upside:'var(--amber)', Unconfirmed:'var(--muted)' };
+  const confColors = { Confirmed:'var(--green)', Blocked:'var(--amber)', Unconfirmed:'var(--muted)' };
   document.getElementById('kpi-exp-arr').innerHTML =
     `<div style="margin-bottom:2px">${expEntCount} enterprises expected</div>` +
     `<div class="kpi-grp">${kgrp('By Status',
-       ['Confirmed','Upside','Unconfirmed'].filter(k => expByConf[k].arr > 0)
+       ['Confirmed','Blocked','Unconfirmed'].filter(k => expByConf[k].arr > 0)
          .map(k => kpill(k, `${expByConf[k].ents.size} · ${fmt$(expByConf[k].arr)}`, confColors[k])).join(''))}</div>`;
   document.getElementById('kpi-exp-tags').innerHTML = kprod(expStudio, expVini);
 
@@ -2204,11 +2209,11 @@ const stackTotals = {
 // OB to Live Projection — next 7 days, stacked by OB POC.
 // Projected go-lives = in-funnel accounts with a Projected Live Date in [today .. today+6].
 // Confirmation-bucket toggle shared by the Next-7-days charts.
-const bucketOf = (rows, b) => b === 'Confirmed' ? rows.filter(r => (r.currentMonthConf||'').trim() === 'Confirmed')
-                            : b === 'Upside'    ? rows.filter(r => (r.currentMonthConf||'').trim() === 'Upside')
+const bucketOf = (rows, b) => b === 'Confirmed' ? rows.filter(isConfirmedConf)
+                            : b === 'Blocked'   ? rows.filter(isBlockedConf)
                             : rows;
 function bucketTogglePills(current, fn) {
-  return ['Overall','Confirmed','Upside'].map(b => {
+  return ['Overall','Confirmed','Blocked'].map(b => {
     const a = b === current;
     return `<button onclick="${fn}('${b}')" style="border:1px solid ${a?'var(--blue)':'var(--border)'};background:${a?'var(--blue)':'#fff'};color:${a?'#fff':'var(--muted)'};border-radius:14px;padding:3px 13px;font-size:11.5px;font-weight:600;cursor:pointer">${b}</button>`;
   }).join('');
@@ -2594,7 +2599,7 @@ function renderBlockedCharts(filtered) {
   makeHBar('blocked-vini-chart', countBlocked(filtered.filter(r=>r.source==='vini')), 'blocked-vini');
 }
 
-// POC-Level Pendency Overview: in-OB ARR rolled up POC → Studio/Vini → Projection Month → Confirmed/Upside
+// POC-Level Pendency Overview: in-OB ARR rolled up POC → Studio/Vini → Projection Month → Confirmed/Blocked
 function renderPocPendency(filtered) {
   const el = document.getElementById('poc-pendency');
   if (!el) return;
@@ -2604,8 +2609,8 @@ function renderPocPendency(filtered) {
   const sumA = a => a.reduce((s, r) => s + r.arr, 0);
   const mKey = r => r.projectionDate ? (r.projectionDate.getFullYear() + '-' + String(r.projectionDate.getMonth()+1).padStart(2,'0')) : 'none';
   const mLabel = k => { if (k === 'none') return 'No Projection Date'; const [y,m] = k.split('-'); return new Date(+y, +m-1, 1).toLocaleString('en-US', { month:'long', year:'numeric' }); };
-  const confOf = r => r.currentMonthConf === 'Confirmed' ? 'Confirmed' : r.currentMonthConf === 'Upside' ? 'Upside' : 'Unconfirmed';
-  const confColor = { Confirmed:'#16A34A', Upside:'#D97706', Unconfirmed:'#64748B' };
+  const confOf = confBucket;
+  const confColor = { Confirmed:'#16A34A', Blocked:'#D97706', Unconfirmed:'#64748B' };
 
   // Top level: POC (sorted by total pending ARR)
   const pocs = {};
@@ -2624,9 +2629,9 @@ function renderPocPendency(filtered) {
       const mKeys = Object.keys(months).sort((a,b) => a==='none'?1 : b==='none'?-1 : a.localeCompare(b));
       const mBlocks = mKeys.map(mk => {
         const mrows = months[mk];
-        const byConf = { Confirmed:[], Upside:[], Unconfirmed:[] };
+        const byConf = { Confirmed:[], Blocked:[], Unconfirmed:[] };
         mrows.forEach(r => byConf[confOf(r)].push(r));
-        const confRows = ['Confirmed','Upside','Unconfirmed'].filter(c => byConf[c].length).map(c => {
+        const confRows = ['Confirmed','Blocked','Unconfirmed'].filter(c => byConf[c].length).map(c => {
           const cr = byConf[c];
           return `<tr>
             <td style="padding:5px 10px 5px 64px;border-bottom:1px solid var(--border);color:${confColor[c]};font-weight:600">${c}</td>
@@ -2724,10 +2729,13 @@ function renderAccountTree(containerId, rows, showAgent) {
   const keys = Object.keys(months).sort((a,b)=> a==='none'?1 : b==='none'?-1 : a.localeCompare(b));
 
   let gid = 0;
-  const confColor = { Confirmed:'#16A34A', Upside:'#D97706', Unconfirmed:'#64748B' };
-  const confOf = r => r.currentMonthConf==='Confirmed' ? 'Confirmed' : r.currentMonthConf==='Upside' ? 'Upside' : 'Unconfirmed';
+  const confColor = { Confirmed:'#16A34A', Blocked:'#D97706', Unconfirmed:'#64748B' };
+  const confBg    = { Confirmed:'#F0FDF4', Blocked:'#FFF7ED', Unconfirmed:'#F8FAFC' };
+  const confOf = confBucket;
 
-  const buildEnts = rws => {
+  // baseIndent = left padding of the account row; spine = the bucket's container accent
+  // bar drawn down the left of every row so accounts read as nested inside the bucket.
+  const buildEnts = (rws, baseIndent, spine) => {
     const ents = {};
     rws.forEach(r => { const e=r.entityName||r.rooftopName||'—'; (ents[e]=ents[e]||[]).push(r); });
     const entKeys = Object.keys(ents).sort((a,b)=> ents[b].reduce((s,r)=>s+r.arr,0) - ents[a].reduce((s,r)=>s+r.arr,0));
@@ -2741,7 +2749,7 @@ function renderAccountTree(containerId, rows, showAgent) {
         ? '<span style="color:var(--faint)">—</span>'
         : `${aeName}${aeMgr && aeMgr !== '—' ? `<div style="font-size:10px;color:var(--muted)">↳ ${aeMgr}</div>` : ''}`;
       const childRows = items.map(it => `<tr class="tree-child ${id}" style="display:none;background:#fbfcfe">
-        <td style="padding:6px 10px 6px 50px;border-bottom:1px solid var(--border)">${it.rooftopName||it.entityName||'—'}${showAgent&&it.agent?` <span style="color:var(--faint)">· ${it.agent}</span>`:''}<div style="font-size:10px;color:var(--muted)">${it.stage||''}${it.subStage?' · '+it.subStage:''}</div></td>
+        <td style="padding:6px 10px 6px ${baseIndent+18}px;border-left:4px solid ${spine};border-bottom:1px solid var(--border)"><span style="color:var(--faint)">↳ </span>${it.rooftopName||it.entityName||'—'}${showAgent&&it.agent?` <span style="color:var(--faint)">· ${it.agent}</span>`:''}<div style="font-size:10px;color:var(--muted)">${it.stage||''}${it.subStage?' · '+it.subStage:''}</div></td>
         <td class="td-right" style="border-bottom:1px solid var(--border)">${fmt$(it.arr)}</td>
         <td style="border-bottom:1px solid var(--border)">${it.obPoc||'—'}</td>
         <td style="border-bottom:1px solid var(--border)"></td>
@@ -2750,7 +2758,7 @@ function renderAccountTree(containerId, rows, showAgent) {
         <td class="td-muted" style="border-bottom:1px solid var(--border)">${dt(it.projectionDate)}</td>
       </tr>`).join('');
       return `<tr onclick="toggleTree('${id}',this)" style="cursor:pointer">
-        <td style="padding:8px 10px 8px 34px;border-bottom:1px solid var(--border);font-weight:600"><span class="tree-caret" style="display:inline-block;width:14px;color:var(--muted)">▸</span>${e} <span style="font-weight:500;color:var(--muted);font-size:12px">(${items.length})</span></td>
+        <td style="padding:8px 10px 8px ${baseIndent}px;border-left:4px solid ${spine};border-bottom:1px solid var(--border);font-weight:600"><span class="tree-caret" style="display:inline-block;width:14px;color:var(--muted)">▸</span>${e} <span style="font-weight:500;color:var(--muted);font-size:12px">(${items.length})</span></td>
         <td class="td-right" style="border-bottom:1px solid var(--border);font-weight:700">${fmt$(eArr)}</td>
         <td style="border-bottom:1px solid var(--border)">${uniqJoin(items.map(r=>r.obPoc))}</td>
         <td style="border-bottom:1px solid var(--border)">${aeCell}</td>
@@ -2764,23 +2772,28 @@ function renderAccountTree(containerId, rows, showAgent) {
   const sections = keys.map(k => {
     const mrows = months[k];
     const monthHdr = `<tr><td colspan="7" style="background:var(--bg);padding:9px 12px;font-weight:800;color:var(--text);border-bottom:2px solid var(--border);position:sticky;top:27px;height:20px;z-index:6">${mLabel(k)} <span style="color:var(--blue)">· ${fmt$(mrows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} rooftops</span></td></tr>`;
-    const byConf = { Confirmed:[], Upside:[], Unconfirmed:[] };
+    const byConf = { Confirmed:[], Blocked:[], Unconfirmed:[] };
     mrows.forEach(r => byConf[confOf(r)].push(r));
     const ownerColor = o => /tech/i.test(o) ? '#2563EB' : /client/i.test(o) ? '#DC2626' : '#94A3B8';
-    const confBlocks = ['Confirmed','Upside','Unconfirmed'].filter(c => byConf[c].length).map(c => {
+    const confBlocks = ['Confirmed','Blocked','Unconfirmed'].filter(c => byConf[c].length).map(c => {
       const crows = byConf[c];
       const nEnt = new Set(crows.map(r=>r.entityName||r.rooftopName||'—')).size;
-      const hdr = `<tr><td colspan="7" style="padding:6px 12px 6px 18px;font-weight:700;color:${confColor[c]};background:#fff;border-bottom:1px solid var(--border);border-left:4px solid ${confColor[c]};position:sticky;top:63px;z-index:5">${c} <span style="font-weight:600">· ${fmt$(crows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:500;font-size:12px">· ${nEnt} ent · ${crows.length} rooftops</span></td></tr>`;
-      if (c !== 'Upside') return hdr + buildEnts(crows);
-      // Upside → bifurcate by Blocked Owner (Client / Tech / Unassigned)
+      // Level 1 — confirmation bucket header (solid accent bar = the container marker)
+      const hdr = `<tr><td colspan="7" style="padding:7px 12px 7px 16px;font-weight:800;color:${confColor[c]};background:${confBg[c]};border-bottom:1px solid var(--border);border-left:6px solid ${confColor[c]};position:sticky;top:63px;z-index:5">${c} <span style="font-weight:700">· ${fmt$(crows.reduce((s,r)=>s+r.arr,0))}</span> <span style="color:var(--muted);font-weight:500;font-size:12px">· ${nEnt} ent · ${crows.length} rooftops</span></td></tr>`;
+      // Confirmed / Unconfirmed: no blocker layer → accounts sit one level under the bucket
+      if (c !== 'Blocked') return hdr + buildEnts(crows, 40, confColor[c]);
+      // Blocked → group by Blocked Owner (Client / Tech / Unassigned); owner is a sub-band
+      // inside Blocked, accounts nest one level deeper again.
       const byOwner = {};
       crows.forEach(r => { const o = cleanTreeTxt(r.blockedReason) || 'Unassigned'; (byOwner[o]=byOwner[o]||[]).push(r); });
       const ownerKeys = Object.keys(byOwner).sort((a,b)=> byOwner[b].reduce((s,r)=>s+r.arr,0) - byOwner[a].reduce((s,r)=>s+r.arr,0));
       const ownerBlocks = ownerKeys.map(o => {
         const orows = byOwner[o];
         const oEnt = new Set(orows.map(r=>r.entityName||r.rooftopName||'—')).size;
-        const oh = `<tr><td colspan="7" style="padding:5px 12px 5px 30px;font-weight:600;font-size:12.5px;color:${ownerColor(o)};background:#fff;border-bottom:1px dashed var(--border);position:sticky;top:92px;z-index:4">⛔ ${o} <span style="color:var(--muted);font-weight:500">· ${fmt$(orows.reduce((s,r)=>s+r.arr,0))} · ${oEnt} ent · ${orows.length} rooftops</span></td></tr>`;
-        return oh + buildEnts(orows);
+        // Level 2 — Blocked Owner sub-band: amber spine continues (still inside Blocked),
+        // tinted background + deeper indent so it reads as a subset of Blocked.
+        const oh = `<tr><td colspan="7" style="padding:5px 12px 5px 36px;font-weight:700;font-size:12px;color:${ownerColor(o)};background:#FEF3E2;border-left:6px solid ${confColor.Blocked};border-bottom:1px dashed #F5D9A8;position:sticky;top:92px;z-index:4"><span style="text-transform:uppercase;letter-spacing:.03em;font-size:10px;color:var(--muted);font-weight:700">Blocked owner</span> · ⛔ ${o} <span style="color:var(--muted);font-weight:500">· ${fmt$(orows.reduce((s,r)=>s+r.arr,0))} · ${oEnt} ent · ${orows.length} rooftops</span></td></tr>`;
+        return oh + buildEnts(orows, 58, confColor.Blocked);
       }).join('');
       return hdr + ownerBlocks;
     }).join('');
