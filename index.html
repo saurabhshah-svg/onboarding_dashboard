@@ -224,6 +224,10 @@ tr:hover td { background:#F8FAFC; }
 .prog-title { font-size:19px; font-weight:800; color:var(--text); margin:0; }
 .prog-sub { font-size:13px; color:var(--muted); }
 .prog-hd-2 { margin-top:42px; padding-top:24px; border-top:2px solid var(--border); }
+.p1-stat-card { display:inline-block; background:#fff; border:1px solid var(--border); border-left:4px solid #16A34A; border-radius:8px; padding:10px 18px; margin-bottom:16px; }
+.p1-stat-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+.p1-stat-val { font-size:22px; font-weight:800; color:var(--text); margin-top:2px; }
+.p1-stat-sub { font-size:11.5px; color:var(--muted); margin-top:1px; }
 .wf-panel { margin-top:28px; border-top:1px solid var(--border); padding-top:18px; }
 .wf-hd { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
 .wf-title { font-size:15px; font-weight:800; color:var(--text); margin:0; }
@@ -1252,6 +1256,7 @@ async function fetchPartnership() {
 // Columns: A account · B manager · C total-ARR · D product · E PWS Type(New/Old/In Pipeline) ·
 //          F date · G program-ARR(sums to the "Sent to OB" total) · H Current Status · I AE · J Owner.
 const PROG1_CSV_URL = 'https://docs.google.com/spreadsheets/d/1o1s_iRGCu4MXANfAKOJwAXTBHzLJFzXHg1evxpLeGl8/gviz/tq?tqx=out:csv&sheet=Saurabh';
+const PROG1_ALREADY_SENT = 275349;   // ARR already moved into OB from this Sales backfill — hardcoded, MONTHLY UPKEEP
 let PROG1_ROWS = [];
 async function fetchProg1() {
   const resp = await fetch(PROG1_CSV_URL);
@@ -1635,10 +1640,12 @@ function renderPrograms(rows) {
   if (FN_SEL && !FN_NODES[FN_SEL]) FN_SEL = null;
 
   const p1Html = hasP1
-    ? `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program 1 — Sales → OB Funnel Backfill</h2><span class="prog-sub">Accounts Sales sent to OB · by PWS type → Confirmed (before / 24th onwards) · Blocked (by owner)</span></div>
+    ? `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program 1 — Sales → OB Funnel Backfill</h2><span class="prog-sub">Sales pipeline expected to move into OB · by PWS type → Confirmed (before / 24th onwards) · Blocked (by owner)</span></div>
+       <div class="p1-stat-card"><div class="p1-stat-label">Already Sent to OB</div><div class="p1-stat-val">${fmt$(PROG1_ALREADY_SENT)}</div><div class="p1-stat-sub">moved into OB so far this month</div></div>
        <div class="fn-wrap"><div class="fn-tree-panel" data-root="p1">${fnRenderTree('p1')}</div></div>`
     : `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program 1 — Sales → OB Funnel Backfill</h2></div>
-       <div class="empty-state">Program 1 data unavailable — the tracker sheet couldn't be reached.</div>`;
+       <div class="p1-stat-card"><div class="p1-stat-label">Already Sent to OB</div><div class="p1-stat-val">${fmt$(PROG1_ALREADY_SENT)}</div><div class="p1-stat-sub">moved into OB so far this month</div></div>
+       <div class="empty-state">Expected-movement tracker sheet couldn't be reached.</div>`;
 
   document.getElementById('programs-content').innerHTML =
     `<div class="prog-hd"><h2 class="prog-title">Program Summary</h2><span class="prog-sub">The month's OB funnel — where the ARR is, who owns the unblock</span></div>
@@ -1846,7 +1853,7 @@ function buildProg1(reg) {
     }
     return reg(id, { label:t, desc:m.desc, color:m.color, bg:m.bg, rows:trows, kind:'timing', children:kids });
   });
-  reg('p1', { label:'Sent to OB', desc:'Sales → OB backfill · this month', color:'#0F172A', rows, kind:'root', children:typeIds });
+  reg('p1', { label:'Expected Movement to OB ARR', desc:'Sales pipeline expected to move into OB · not in OB yet', color:'#0F172A', rows, kind:'root', children:typeIds });
   return true;
 }
 
