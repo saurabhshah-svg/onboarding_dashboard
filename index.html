@@ -223,6 +223,7 @@ tr:hover td { background:#F8FAFC; }
 .prog-hd { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
 .prog-title { font-size:19px; font-weight:800; color:var(--text); margin:0; }
 .prog-sub { font-size:13px; color:var(--muted); }
+.prog-hd-2 { margin-top:42px; padding-top:24px; border-top:2px solid var(--border); }
 .wf-panel { margin-top:28px; border-top:1px solid var(--border); padding-top:18px; }
 .wf-hd { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
 .wf-title { font-size:15px; font-weight:800; color:var(--text); margin:0; }
@@ -1247,6 +1248,52 @@ async function fetchPartnership() {
   return parseCSV(await resp.text());
 }
 
+// Program 1 — Sales → OB Funnel Backfill. Public "Saurabh" tab (fetched directly via gviz).
+// Columns: A account · B manager · C total-ARR · D product · E PWS Type(New/Old/In Pipeline) ·
+//          F date · G program-ARR(sums to the "Sent to OB" total) · H Current Status · I AE · J Owner.
+const PROG1_CSV_URL = 'https://docs.google.com/spreadsheets/d/1o1s_iRGCu4MXANfAKOJwAXTBHzLJFzXHg1evxpLeGl8/gviz/tq?tqx=out:csv&sheet=Saurabh';
+let PROG1_ROWS = [];
+async function fetchProg1() {
+  const resp = await fetch(PROG1_CSV_URL);
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  return parseCSV(await resp.text());
+}
+function parseProg1(rows) {
+  // rows[0] = totals band, rows[1] = header; data from row 2. Map to fields the fn-tree can render.
+  return rows.slice(2)
+    .filter(r => r.length > 7 && (r[0] || '').trim() && (parseARR(r[6]) > 0 || (r[7] || '').trim()))
+    .map(r => {
+      const status = (r[7] || '').trim();
+      const owner  = (r[9] || '').trim();
+      const blocked = /block/i.test(status);
+      return {
+        entityName: (r[0] || '').trim(), rooftopName: (r[0] || '').trim(),
+        source: /vini/i.test(r[3] || '') ? 'vini' : 'amer',
+        arr: parseARR(r[6]),
+        obPoc: (r[1] || '').trim(),                 // OB manager
+        aeName: (r[8] || '').trim(),
+        pwsType: (r[4] || '').trim(),
+        status,
+        owner,
+        currentMonthConf: /confirm/i.test(status) ? 'Confirmed' : (blocked ? 'Blocked' : ''),
+        blockedReason: blocked ? owner : '',
+        projectionDate: parseDate(r[5])
+      };
+    });
+}
+// Program 1 driving owner (col J), normalized to teams.
+function p1Owner(r) {
+  const o = (r.owner || '').trim();
+  if (!o) return 'Unassigned';
+  if (/integration|tech/i.test(o)) return 'Tech';
+  if (/product/i.test(o)) return 'Product';
+  if (/^ob$/i.test(o)) return 'OB';
+  if (/cs|client/i.test(o)) return 'CS / Client';
+  if (/sales/i.test(o)) return 'Sales';
+  return o;
+}
+const P1_OWNER_COLOR = { OB:'#0891B2', Product:'#7C3AED', Tech:'#2563EB', 'CS / Client':'#DC2626', Sales:'#DB2777', Unassigned:'#94A3B8' };
+
 async function loadAllData() {
   syncClock();   // re-sync "today" each load/refresh so date-relative metrics don't go stale on a long-open tab
   showLoadingBanner('⟳ Loading data...');
@@ -1255,13 +1302,14 @@ async function loadAllData() {
 
     if (APPS_SCRIPT_URL && APPS_SCRIPT_URL.trim() !== '') {
       showLoadingBanner('⟳ Fetching live data from Google Sheets...');
-      const [v, a, p, c, ae, pt] = await Promise.all([
+      const [v, a, p, c, ae, pt, p1] = await Promise.all([
         fetchLiveSheet('vini'),
         fetchLiveSheet('amer'),
         fetchLiveSheet('apac'),
         fetchLiveSheet('churn').catch(err => { console.warn('Churn fetch failed, using fallback REVENUE_LOSS:', err); return null; }),
         fetchLiveSheet('aemap').catch(err => { console.warn('AE map fetch failed, AE column will be blank:', err); return null; }),
-        fetchPartnership().catch(err => { console.warn('Partnership fetch failed, channel will show $0:', err); return null; })
+        fetchPartnership().catch(err => { console.warn('Partnership fetch failed, channel will show $0:', err); return null; }),
+        fetchProg1().catch(err => { console.warn('Program 1 fetch failed, section will be hidden:', err); return null; })
       ]);
       viniCSV = v.csv; amerCSV = a.csv; apacCSV = p.csv;
       if (c && c.csv) {
@@ -1274,6 +1322,7 @@ async function loadAllData() {
         PARTNERSHIP      = parsePartnership(pt, ['delta (m-1 to m)', 'delta'], 'projected current month');   // current month; book = this month's projected revenue
         PARTNERSHIP_PREV = parsePartnership(pt, ['delta (m-2 to m-1)', 'delta'], 'revenue last month');       // prior month (bridge); book = last completed month's revenue
       }
+      if (p1) PROG1_ROWS = parseProg1(p1);
       syncedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
       showSyncBanner('🟢 Live data · Last synced: ' + syncedAt, 'live');
     } else {
@@ -1567,14 +1616,23 @@ function renderPrograms(rows) {
   // #4: Went Live sits above Currently in OB. Reseller live also rolls into the Total.
   reg('total',{ label:'Total Funnel',    desc:'in OB at month start + added this month', color:'#0F172A', rows:total, kind:'root', extraArr:resellerArr, children:['live','inob','drop'] });
 
+  const hasP1 = buildProg1(reg);   // adds p1* nodes into FN_NODES (Program 1)
+
   // parent links (for breadcrumbs)
   Object.values(FN_NODES).forEach(n => n.children.forEach(c => { if (FN_NODES[c]) FN_NODES[c].parent = n.id; }));
   if (FN_SEL && !FN_NODES[FN_SEL]) FN_SEL = null;
 
+  const p1Html = hasP1
+    ? `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program 1 — Sales → OB Funnel Backfill</h2><span class="prog-sub">Accounts Sales sent to OB · by PWS type → Confirmed (before / 24th onwards) · Blocked (by owner)</span></div>
+       <div class="fn-wrap"><div class="fn-tree-panel" data-root="p1">${fnRenderTree('p1')}</div></div>`
+    : `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program 1 — Sales → OB Funnel Backfill</h2></div>
+       <div class="empty-state">Program 1 data unavailable — the tracker sheet couldn't be reached.</div>`;
+
   document.getElementById('programs-content').innerHTML =
     `<div class="prog-hd"><h2 class="prog-title">Program Summary</h2><span class="prog-sub">The month's OB funnel — where the ARR is, who owns the unblock</span></div>
-     <div class="fn-wrap"><div class="fn-tree-panel">${fnRenderTree('total')}</div></div>
-     ${fnWaterfallHtml()}`;
+     <div class="fn-wrap"><div class="fn-tree-panel" data-root="total">${fnRenderTree('total')}</div></div>
+     ${fnWaterfallHtml()}
+     ${p1Html}`;
 }
 
 // A node's total ARR = its D2D rows + any scalar extra (e.g. reseller live on Went Live/Total).
@@ -1593,9 +1651,10 @@ function fnSplitHtml(rows, dark, extraArr) {
   return parts.join('<span class="fn-sp-sep">·</span>') || '<span class="fn-sp" style="color:var(--faint)">—</span>';
 }
 
+function fnRootOf(id) { let c = id; while (FN_NODES[c] && FN_NODES[c].parent) c = FN_NODES[c].parent; return c; }
 function fnBox(id) {
   const n = FN_NODES[id];
-  const totalArr = nodeArr(FN_NODES.total) || 1;
+  const totalArr = nodeArr(FN_NODES[fnRootOf(id)]) || 1;   // % is of this tree's own root
   const arr = nodeArr(n);
   const pRaw = arr / totalArr * 100;
   const pct = arr === 0 ? '0%' : pRaw < 1 ? '<1%' : Math.round(pRaw) + '%';
@@ -1625,8 +1684,7 @@ function fnPath(id) { const out = []; let c = id; while (c) { out.unshift(c); c 
 function selectFunnel(id) {
   if (!FN_NODES[id]) return;
   FN_SEL = (FN_SEL === id) ? null : id;   // click again to close
-  const panel = document.querySelector('.fn-tree-panel');
-  if (panel) panel.innerHTML = fnRenderTree('total');
+  document.querySelectorAll('.fn-tree-panel').forEach(p => { if (p.dataset.root) p.innerHTML = fnRenderTree(p.dataset.root); });
   if (FN_SEL) {
     const box = document.querySelector(`.fn-box[data-fnid="${CSS.escape(FN_SEL)}"]`);
     if (box) box.scrollIntoView({ behavior:'smooth', block:'nearest' });
@@ -1731,6 +1789,46 @@ function fnWaterfallHtml() {
     </div>
     ${rowsHtml}
   </div>`;
+}
+
+// #4/#5: Program 1 — Sales → OB Funnel Backfill. Branch: PWS Type (New/Old/In Pipeline)
+// → Confirmed (before / on-or-after 24th) + Blocked (by Owner, col J). Registers p1* nodes.
+function buildProg1(reg) {
+  const rows = PROG1_ROWS || [];
+  if (!rows.length) return false;
+  const arrOf = a => a.reduce((s, r) => s + r.arr, 0);
+  const byType = {};
+  rows.forEach(r => { const t = r.pwsType || 'Other'; (byType[t] = byType[t] || []).push(r); });
+  const TYPE_ORDER = ['New', 'Old', 'In Pipeline'];
+  const typeMeta = {
+    'New':         { desc:'signed this month',      color:'#16A34A', bg:'#F0FDF4' },
+    'Old':         { desc:'signed previous months', color:'#2563EB', bg:'#EFF6FF' },
+    'In Pipeline': { desc:'yet to be signed',       color:'#D97706', bg:'#FFF7ED' }
+  };
+  const typeIds = Object.keys(byType).sort((a, b) => {
+    const ia = TYPE_ORDER.indexOf(a), ib = TYPE_ORDER.indexOf(b);
+    return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib);
+  }).map(t => {
+    const trows = byType[t], m = typeMeta[t] || { desc:'', color:'#64748B', bg:'#F1F5F9' };
+    const id = 'p1|' + t;
+    const conf = trows.filter(isConfirmedConf);
+    const blk  = trows.filter(isBlockedConf);
+    const before = conf.filter(r => r.projectionDate && r.projectionDate.getDate() < 24);
+    const after  = conf.filter(r => !(r.projectionDate && r.projectionDate.getDate() < 24));
+    const kids = [];
+    if (before.length) kids.push(reg(id + '|cb', { label:'Confirmed · before 24th', desc:'can land this month', color:'#16A34A', rows:before, kind:'owner' }));
+    if (after.length)  kids.push(reg(id + '|ca', { label:'Confirmed · 24th onwards', desc:'confirmed, later date',  color:'#65A30D', rows:after,  kind:'owner' }));
+    if (blk.length) {
+      const byOwner = {};
+      blk.forEach(r => { const o = p1Owner(r); (byOwner[o] = byOwner[o] || []).push(r); });
+      const ownerKids = Object.keys(byOwner).sort((a, b) => arrOf(byOwner[b]) - arrOf(byOwner[a]))
+        .map(o => reg(id + '|bl|' + o, { label:o, desc:'blocked · ' + o + ' owns the unblock', color:(P1_OWNER_COLOR[o] || '#DC2626'), rows:byOwner[o], kind:'owner' }));
+      kids.push(reg(id + '|bl', { label:'Blocked', desc:'needs unblock', color:'#DC2626', rows:blk, kind:'timing', children:ownerKids }));
+    }
+    return reg(id, { label:t, desc:m.desc, color:m.color, bg:m.bg, rows:trows, kind:'timing', children:kids });
+  });
+  reg('p1', { label:'Sent to OB', desc:'Sales → OB backfill · this month', color:'#0F172A', rows, kind:'root', children:typeIds });
+  return true;
 }
 
 // ─── SLACK VIEW (compact mobile scorecard) ───────────────────
