@@ -189,6 +189,40 @@ tr:hover td { background:#F8FAFC; }
 /* Highlighted KPI card (Live This Month) — stands out among the strip */
 .disp-card.disp-hl { background:#ECFDF3; border:2px solid var(--green); box-shadow:0 0 0 3px rgba(22,163,74,.15); }
 .disp-card.disp-hl .disp-kpi-label { color:var(--green); }
+/* ── Programs: OB Funnel branched-block tracker ─────────────── */
+.fn-wrap { display:flex; flex-direction:column; gap:20px; }
+.fn-tree-panel { overflow-x:auto; padding-bottom:4px; }
+.fn-box { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--border); border-radius:8px; padding:9px 14px; cursor:pointer; transition:box-shadow .12s, background .12s; min-width:440px; }
+.fn-box:hover { background:#F8FAFC; }
+.fn-box.fn-sel { box-shadow:0 0 0 2px var(--blue) inset; }
+.fn-box-main { display:flex; align-items:center; flex:1; min-width:0; }
+.fn-box-label { font-weight:700; font-size:13.5px; color:var(--text); }
+.fn-box-desc { font-weight:500; font-size:11.5px; color:var(--muted); margin-left:7px; }
+.fn-box-nums { text-align:right; white-space:nowrap; margin-left:12px; }
+.fn-arr { font-weight:800; font-size:14px; color:var(--text); display:block; line-height:1.15; }
+.fn-cnt { font-size:11px; color:var(--muted); }
+.fn-pct { width:46px; text-align:right; font-size:12px; font-weight:700; color:var(--muted); flex:none; }
+.fn-box.fn-root { background:#0F172A; border-color:#0F172A; min-width:460px; }
+.fn-box.fn-root .fn-box-label { font-size:15px; font-weight:800; color:#fff; }
+.fn-box.fn-root .fn-arr { color:#fff; font-size:15px; }
+.fn-box.fn-root .fn-box-desc, .fn-box.fn-root .fn-cnt, .fn-box.fn-root .fn-pct { color:#CBD5E1; }
+.fn-box.fn-inob { background:#EFF6FF; }
+.fn-box.fn-terminal-live, .fn-box.fn-terminal-drop { opacity:.9; }
+.fn-box.fn-owner .fn-box-label { font-weight:600; font-size:12.5px; }
+.fn-group { margin-left:26px; border-left:2px solid #DDE3EA; padding-top:2px; }
+.fn-item { position:relative; padding-left:20px; margin-top:8px; }
+.fn-item::before { content:""; position:absolute; left:0; top:21px; width:18px; height:2px; background:#DDE3EA; }
+.fn-detail-panel { border-top:1px solid var(--border); padding-top:14px; }
+.fn-crumb { font-size:12.5px; color:var(--muted); font-weight:600; margin-bottom:3px; }
+.fn-crumb-sep { color:var(--faint); margin:0 5px; }
+.fn-detail-sum { font-size:13px; color:var(--muted); }
+.fn-detail-sum b { font-size:19px; color:var(--text); font-weight:800; }
+.fn-tbl-wrap { max-height:440px; overflow:auto; border:1px solid var(--border); border-radius:8px; margin-top:12px; }
+.fn-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+.fn-tbl th { position:sticky; top:0; background:#F8FAFC; text-align:left; padding:7px 10px; font-size:10px; text-transform:uppercase; color:var(--muted); border-bottom:2px solid var(--border); z-index:1; }
+.fn-tbl td { padding:7px 10px; border-bottom:1px solid var(--border); }
+.fn-tbl tr:hover td { background:#F8FAFC; }
+.fn-badge { font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; }
 </style>
 </head>
 <body>
@@ -951,6 +985,7 @@ function parseVini(rows) {
     groupType:   getCol(r,cm,'group / single'),
     projectionDate: parseDate(getCol(r,cm,'projected live date')),
     goLiveDate:  parseDate(getCol(r,cm,'go-live date')),
+    dropDate:    parseDate(getCol(r,cm,'churn / drop-off date')),
     obCallDate:  parseDate(getCol(r,cm,'ob call date')),
     blockedReason: getCol(r,cm,'blocked owner'),
     blockedRemarks: getCol(r,cm,'blocked remarks'),
@@ -986,6 +1021,7 @@ function parseAmer(rows) {
     flow:        getCol(r,cm,'flow'),
     projectionDate: parseDate(getCol(r,cm,'projected live date')),
     goLiveDate:  parseDate(getCol(r,cm,'go-live date')),
+    dropDate:    parseDate(getCol(r,cm,'churn / drop-off date')),
     obCallDate:  parseDate(getCol(r,cm,'ob call date')),
     blockedReason: getCol(r,cm,'blocked owner'),
     blockedRemarks: getCol(r,cm,'blocked remarks'),
@@ -1024,8 +1060,8 @@ function parseApacEmea(rows) {
       region:      region || 'APAC',
       projectionDate: parseDate(getCol(r,cm,'projected live date')),
       goLiveDate:  parseDate(getCol(r,cm,'go-live date')),
+      dropDate:    parseDate(getCol(r,cm,'churn / drop-off date')),
       obCallDate:  parseDate(getCol(r,cm,'ob call date')),
-    obCallDate:  parseDate(getCol(r,cm,'ob call date')),
       blockedReason: getCol(r,cm,'blocked bucketing','blocked owner'),
       blockedRemarks: getCol(r,cm,'blocked remarks'),
       unblockOwner: getCol(r,cm,'who is currently working to unblock? (add person name)'),
@@ -1415,111 +1451,184 @@ function renderAnalytics(rows) {
     : '<div style="padding:40px;text-align:center;color:var(--muted)">No live data available</div>';
 }
 
-// ─── PROGRAMS — Unblock OB → Live (Studio / Vini) ────────────
-// Story per segment:
-//   Bucket 1 "Went Live + Confirmed this month" — no blockers, OB just needs to push.
-//   Bucket 2 "Blocked — needs unblock program" — each Blocked line item needs an unblock
-//     owner + ETA (the 2 new sheet columns). Rows missing either are FLAGGED (no program).
-function isUpside(r)    { return isBlockedConf(r); }
+// ─── PROGRAMS — OB Funnel tracker (branched block chart) ─────
+// Tracks the month's funnel cohort and how the still-in-OB ARR splits:
+//   Total Funnel = Currently in OB (isInFunnel) + Went Live this month (liveThisMonth)
+//                  + Dropped this month (dropDate in current month, col R Churn/Drop-off).
+//   Live + Drop are terminal (no further tracking). "Currently in OB" branches by
+//   projection timing (this month / future / no date), then by DRIVING OWNER:
+//     OB (self-drive) = Confirmed · Sales/Client, Product, Tech = Blocked, by Blocked Owner.
+//   Every block is clickable → detail table of the accounts contributing that ARR.
 function isConfirmed(r) { return isConfirmedConf(r); }
 function hasVal(v)      { return !!(v && String(v).trim()); }
-function hasProgram(r)  { return hasVal(r.unblockOwner) && hasVal(r.unblockEta); }
 // Hide spreadsheet error values (#REF!, #N/A, …) so broken cells don't show as text.
 function cleanTxt(v)    { const s=(v||'').trim(); return /^#(ref|n\/a|value|div\/0|name|null|num)[!?]*$/i.test(s) ? '' : s; }
 
+// Dropped this month for the funnel cohort = a Churn/Drop-off Date (col R) in the current month.
+function funnelDroppedThisMonth(r) { return r.dropDate && sameMonth(r.dropDate, CM, CY); }
+
+// Driving owner for an in-OB account: Confirmed → OB self-drives; Blocked → the Blocked Owner's team.
+const FUNNEL_OWNER_ORDER = ['OB (self-drive)', 'Sales / Client', 'Product', 'Tech', 'Unconfirmed'];
+const FUNNEL_OWNER_META = {
+  'OB (self-drive)': { color:'#16A34A', desc:'Confirmed · OB drives to go-live' },
+  'Sales / Client':  { color:'#DC2626', desc:'Blocked · Sales/Client owns the unblock' },
+  'Product':         { color:'#7C3AED', desc:'Blocked · Product owns the unblock' },
+  'Tech':            { color:'#2563EB', desc:'Blocked · Tech/Integration owns the unblock' },
+  'Unconfirmed':     { color:'#64748B', desc:'Not confirmed · OB to confirm' },
+  'Blocked — unassigned': { color:'#0891B2', desc:'Blocked · Blocked Owner not set' }
+};
+function funnelOwnerMeta(name) { return FUNNEL_OWNER_META[name] || { color:'#0891B2', desc:'Blocked · ' + name }; }
+function funnelOwner(r) {
+  if (isConfirmedConf(r)) return 'OB (self-drive)';
+  if (isBlockedConf(r)) {
+    const o = (r.blockedReason || '').trim(), lo = o.toLowerCase();
+    if (/client|sales/.test(lo)) return 'Sales / Client';
+    if (/product/.test(lo))      return 'Product';
+    if (/tech|integration/.test(lo)) return 'Tech';
+    return o || 'Blocked — unassigned';
+  }
+  return 'Unconfirmed';
+}
+
+// Node registry + current selection for the branched block chart.
+let FN_NODES = {}, FN_SEL = 'inob';
+
 function renderPrograms(rows) {
-  const segs = [
-    { label:'Studio', color:'#1e40af', rows: rows.filter(r => r.source !== 'vini') },
-    { label:'Vini',   color:'#065f46', rows: rows.filter(r => r.source === 'vini') }
-  ];
+  FN_NODES = {};
+  const arrOf = a => a.reduce((s, r) => s + r.arr, 0);
+  const reg = (id, o) => { FN_NODES[id] = Object.assign({ id, children: [] }, o); return id; };
+
+  const inOb  = rows.filter(isInFunnel);
+  const live  = rows.filter(liveThisMonth);
+  const drop  = rows.filter(funnelDroppedThisMonth);
+  const total = [...inOb, ...live, ...drop];
+
+  const curLabel  = new Date(CY, CM, 1).toLocaleString('en-US', { month:'short', year:'numeric' });
+  const nextLabel = new Date(NY, NM, 1).toLocaleString('en-US', { month:'short', year:'numeric' });
+
+  // Timing bucket for in-OB accounts (overdue/past folds into "this month" = still due now).
+  const timeOf = r => {
+    if (!r.projectionDate) return 'none';
+    const y = r.projectionDate.getFullYear(), m = r.projectionDate.getMonth();
+    return (y > CY || (y === CY && m > CM)) ? 'future' : 'thisMonth';
+  };
+  const timing = { thisMonth:[], future:[], none:[] };
+  inOb.forEach(r => timing[timeOf(r)].push(r));
+  const timingMeta = {
+    thisMonth: { label:`Go-Live in ${curLabel}`,        color:'#2563EB' },
+    future:    { label:`Go-Live ${nextLabel} onwards`,  color:'#0891B2' },
+    none:      { label:'No Projection Date',            color:'#64748B' }
+  };
+
+  const ownerChildren = (parentId, rws) => {
+    const byOwner = {};
+    rws.forEach(r => { const o = funnelOwner(r); (byOwner[o] = byOwner[o] || []).push(r); });
+    return Object.keys(byOwner).sort((a, b) => {
+      const ia = FUNNEL_OWNER_ORDER.indexOf(a), ib = FUNNEL_OWNER_ORDER.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || arrOf(byOwner[b]) - arrOf(byOwner[a]);
+    }).map(o => {
+      const m = funnelOwnerMeta(o);
+      return reg(parentId + '|' + o, { label:o, desc:m.desc, color:m.color, rows:byOwner[o], kind:'owner' });
+    });
+  };
+
+  const timingIds = ['thisMonth', 'future', 'none'].filter(k => timing[k].length).map(k => {
+    const id = 'inob|' + k, m = timingMeta[k];
+    return reg(id, { label:m.label, color:m.color, rows:timing[k], kind:'timing', children:ownerChildren(id, timing[k]) });
+  });
+
+  reg('inob', { label:'Currently in OB', desc:'the ARR we track to go-live', color:'#2563EB', rows:inOb, kind:'inob', children:timingIds });
+  reg('live', { label:'Went Live',       desc:'this month · no further tracking', color:'#16A34A', rows:live, kind:'terminal-live' });
+  reg('drop', { label:'Dropped',         desc:'this month · no further tracking', color:'#DC2626', rows:drop, kind:'terminal-drop' });
+  reg('total',{ label:'Total Funnel',    desc:'in OB at month start + added this month', color:'#0F172A', rows:total, kind:'root', children:['inob','live','drop'] });
+
+  // parent links (for breadcrumbs)
+  Object.values(FN_NODES).forEach(n => n.children.forEach(c => { if (FN_NODES[c]) FN_NODES[c].parent = n.id; }));
+  if (!FN_NODES[FN_SEL]) FN_SEL = 'inob';
+
   document.getElementById('programs-content').innerHTML =
-    programSummaryBar(rows) + segs.map(s => programSegment(s.label, s.color, s.rows)).join('');
+    `<div class="fn-wrap">
+       <div class="fn-tree-panel">${fnRenderTree('total')}</div>
+       <div class="fn-detail-panel" id="fn-detail"></div>
+     </div>`;
+  fnRenderDetail();
 }
 
-function programSummaryBar(rows) {
-  const upside    = rows.filter(r => isUpside(r) && !isLive(r));
-  const flagged   = upside.filter(r => !hasProgram(r));
-  const wentLive  = rows.filter(liveThisMonth);
-  const confirmed = rows.filter(r => isConfirmed(r) && !isLive(r));
-  const pushARR   = [...wentLive, ...confirmed].reduce((s,r)=>s+r.arr,0);
-  const upsideARR = upside.reduce((s,r)=>s+r.arr,0);
-  const flagARR   = flagged.reduce((s,r)=>s+r.arr,0);
-  const card = (label, val, sub, color) => `
-    <div style="flex:1;min-width:200px;background:#fff;border:1px solid var(--border);border-left:4px solid ${color};border-radius:8px;padding:14px 16px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.03em">${label}</div>
-      <div style="font-size:22px;font-weight:800;margin-top:4px">${val}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">${sub}</div>
-    </div>`;
-  return `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px">
-    ${card('Push to Close (Live + Confirmed)', fmt$(pushARR), (wentLive.length+confirmed.length) + ' accounts this month', '#16a34a')}
-    ${card('Blocked ARR to Unblock', fmt$(upsideARR), upside.length + ' accounts need a program', '#d97706')}
-    ${card('⚠ Flagged — No Program', fmt$(flagARR), flagged.length + ' of ' + upside.length + ' missing owner / ETA', '#dc2626')}
+function fnBox(id) {
+  const n = FN_NODES[id];
+  const totalArr = FN_NODES.total.rows.reduce((s, r) => s + r.arr, 0) || 1;
+  const arr = n.rows.reduce((s, r) => s + r.arr, 0);
+  const pRaw = arr / totalArr * 100;
+  const pct = arr === 0 ? '0%' : pRaw < 1 ? '<1%' : Math.round(pRaw) + '%';
+  const ne  = new Set(n.rows.map(r => r.entityName || r.rooftopName || '?')).size;
+  const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${n.color};margin-right:9px;flex:none"></span>`;
+  return `<div class="fn-box fn-${n.kind}${id === FN_SEL ? ' fn-sel' : ''}" style="border-left:4px solid ${n.color}" onclick="selectFunnel('${id}')">
+    <div class="fn-box-main">${dot}<div class="fn-box-label">${n.label}${n.desc ? `<span class="fn-box-desc">${n.desc}</span>` : ''}</div></div>
+    <div class="fn-box-nums"><span class="fn-arr">${fmt$(arr)}</span><span class="fn-cnt">${n.rows.length} rooftops · ${ne} ent</span></div>
+    <div class="fn-pct">${pct}</div>
   </div>`;
 }
+function fnRenderTree(id) {
+  const kids = FN_NODES[id].children || [];
+  const childHtml = kids.length
+    ? `<div class="fn-group">${kids.map(cid => `<div class="fn-item">${fnRenderTree(cid)}</div>`).join('')}</div>`
+    : '';
+  return fnBox(id) + childHtml;
+}
+function fnPath(id) { const out = []; let c = id; while (c) { out.unshift(c); c = FN_NODES[c] && FN_NODES[c].parent; } return out; }
 
-function programSegment(label, color, segRows) {
-  const wentLive  = segRows.filter(liveThisMonth);
-  const confirmed = segRows.filter(r => isConfirmed(r) && !isLive(r));
-  const bucketA   = [...wentLive, ...confirmed].sort((a,b)=>b.arr-a.arr);
-  const upside    = segRows.filter(r => isUpside(r) && !isLive(r)).sort((a,b)=>b.arr-a.arr);
-  const flaggedN  = upside.filter(r => !hasProgram(r)).length;
-  const aARR = bucketA.reduce((s,r)=>s+r.arr,0);
-  const uARR = upside.reduce((s,r)=>s+r.arr,0);
+function selectFunnel(id) {
+  if (!FN_NODES[id]) return;
+  FN_SEL = id;
+  const panel = document.querySelector('.fn-tree-panel');
+  if (panel) panel.innerHTML = fnRenderTree('total');
+  fnRenderDetail();
+  const d = document.getElementById('fn-detail');
+  if (d) d.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
 
-  const th = (h,right) => `<th style="padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted);border-bottom:2px solid var(--border);text-align:${right?'right':'left'}">${h}</th>`;
+function fnRenderDetail() {
+  const el = document.getElementById('fn-detail'); if (!el) return;
+  const n = FN_NODES[FN_SEL]; if (!n) { el.innerHTML = ''; return; }
+  const rws = n.rows.slice().sort((a, b) => b.arr - a.arr);
+  const arr = rws.reduce((s, r) => s + r.arr, 0);
+  const ne  = new Set(rws.map(r => r.entityName || r.rooftopName || '?')).size;
+  const crumb = fnPath(FN_SEL).map((x, i, a) =>
+    i === a.length - 1 ? `<b>${FN_NODES[x].label}</b>` : FN_NODES[x].label
+  ).join('<span class="fn-crumb-sep">›</span>');
 
-  // Bucket 1: Went Live + Confirmed this month
-  const bucketAtable = bucketA.length ? `
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-      <thead><tr style="background:#F8FAFC">${th('Account')}${th('ARR',true)}${th('OB POC')}${th('Status')}${th('Go-Live / Projected')}</tr></thead>
-      <tbody>${bucketA.map(r => {
-        const live = isLive(r);
-        return `<tr>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border);font-weight:600">${r.entityName||r.rooftopName||'—'}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border);text-align:right">${fmt$(r.arr)}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted)">${r.obPoc||'—'}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border)"><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${live?'#dcfce7':'#dbeafe'};color:${live?'#16a34a':'#2563eb'}">${live?'Live':'Confirmed'}</span></td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted)">${fmtDate(live?r.goLiveDate:r.projectionDate)}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>` : '<div style="padding:16px;color:var(--muted);font-size:13px">No live / confirmed accounts this month.</div>';
+  // Date column adapts to the node kind.
+  const dateCol = n.kind === 'terminal-live' ? { h:'Go-Live Date',   f:r => r.goLiveDate ? fmtDate(r.goLiveDate) : '—' }
+                : n.kind === 'terminal-drop' ? { h:'Drop-off Date',  f:r => r.dropDate   ? fmtDate(r.dropDate)   : '—' }
+                : { h:'Proj Live', f:r => r.projectionDate ? fmtDate(r.projectionDate) : '—' };
+  const confBadge = r => {
+    const b = confBucket(r);
+    const c = b === 'Confirmed' ? '#16A34A' : b === 'Blocked' ? '#D97706' : '#64748B';
+    const bg = b === 'Confirmed' ? '#DCFCE7' : b === 'Blocked' ? '#FEF3C7' : '#EEF2F7';
+    return `<span class="fn-badge" style="background:${bg};color:${c}">${b}</span>`;
+  };
+  const prodBadge = r => {
+    const v = r.source === 'vini';
+    return `<span class="fn-badge" style="background:${v ? '#ECFEFF' : '#EFF6FF'};color:${v ? '#0891B2' : '#2563EB'}">${v ? 'Vini' : 'Studio'}</span>`;
+  };
+  const th = (h, r) => `<th style="text-align:${r ? 'right' : 'left'}">${h}</th>`;
+  const body = rws.length ? rws.map(r => `<tr>
+      <td style="font-weight:600">${r.entityName || r.rooftopName || '—'}${r.rooftopName && r.rooftopName !== r.entityName ? `<div style="font-size:10.5px;color:var(--muted);font-weight:400">↳ ${r.rooftopName}</div>` : ''}</td>
+      <td>${prodBadge(r)}</td>
+      <td style="text-align:right;font-weight:700">${fmt$(r.arr)}</td>
+      <td style="color:var(--muted)">${r.obPoc || '—'}</td>
+      <td>${confBadge(r)}</td>
+      <td style="color:var(--muted)">${cleanTxt(r.blockedReason) || '—'}</td>
+      <td class="td-muted">${dateCol.f(r)}</td>
+    </tr>`).join('') : `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted)">No accounts.</td></tr>`;
 
-  // Bucket 2: Blocked — needs unblock program
-  const upsideTable = upside.length ? `
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-      <thead><tr style="background:#F8FAFC">${th('Account')}${th('ARR',true)}${th('OB POC')}${th('Blocked Remarks')}${th('Unblock Owner')}${th('ETA')}${th('Program')}</tr></thead>
-      <tbody>${upside.map(r => {
-        const mapped = hasProgram(r);
-        const noOwner = !hasVal(r.unblockOwner), noEta = !hasVal(r.unblockEta);
-        const flagTxt = noOwner && noEta ? 'No program mapped' : noOwner ? 'No owner' : 'No ETA';
-        const dash = '<span style="color:#dc2626">—</span>';
-        return `<tr style="${mapped?'':'background:#fef2f2'}">
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border);font-weight:600">${r.entityName||r.rooftopName||'—'}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border);text-align:right">${fmt$(r.arr)}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted)">${r.obPoc||'—'}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted);max-width:260px;white-space:normal">${cleanTxt(r.blockedRemarks)||cleanTxt(r.blockedReason)||'—'}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border)">${hasVal(r.unblockOwner)?r.unblockOwner:dash}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border)">${hasVal(r.unblockEta)?r.unblockEta:dash}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid var(--border)">${mapped
-            ? '<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dcfce7;color:#16a34a">Mapped</span>'
-            : '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#fee2e2;color:#dc2626">⚠ '+flagTxt+'</span>'}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>` : '<div style="padding:16px;color:var(--muted);font-size:13px">No Blocked accounts to unblock. 🎉</div>';
-
-  return `
-  <div class="section" style="margin-bottom:28px;overflow:hidden">
-    <div style="background:${color};color:#fff;padding:12px 18px;font-size:15px;font-weight:800;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <span>${label}</span>
-      <span style="font-size:12px;font-weight:600;opacity:.95">Blocked to unblock: ${fmt$(uARR)} · ${upside.length} accts${flaggedN?` · <span style="color:#fecaca">⚠ ${flaggedN} unmapped</span>`:''}</span>
-    </div>
-    <div style="padding:16px 18px">
-      <div style="font-size:13px;font-weight:700;color:var(--text);margin:4px 0 8px">✅ Went Live + Confirmed this month — push to close <span style="font-weight:500;color:var(--muted)">(${bucketA.length} accts · ${fmt$(aARR)})</span></div>
-      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">${bucketAtable}</div>
-      <div style="font-size:13px;font-weight:700;color:var(--text);margin:20px 0 8px">⚠ Blocked — needs unblock program <span style="font-weight:500;color:var(--muted)">(${upside.length} accts · ${fmt$(uARR)} · ${flaggedN} unmapped)</span></div>
-      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">${upsideTable}</div>
-    </div>
-  </div>`;
+  el.innerHTML = `
+    <div class="fn-crumb">${crumb}</div>
+    <div class="fn-detail-sum"><b>${fmt$(arr)}</b> · ${rws.length} rooftops · ${ne} enterprises</div>
+    <div class="fn-tbl-wrap"><table class="fn-tbl">
+      <thead><tr>${th('Account / Rooftop')}${th('Product')}${th('ARR', true)}${th('OB POC')}${th('Confirmation')}${th('Blocked Owner')}${th(dateCol.h)}</tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>`;
 }
 
 // ─── SLACK VIEW (compact mobile scorecard) ───────────────────
