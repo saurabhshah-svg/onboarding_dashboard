@@ -219,6 +219,24 @@ tr:hover td { background:#F8FAFC; }
 .fn-detail-close { color:var(--blue); cursor:pointer; font-weight:700; margin-left:auto; }
 .fn-detail-close:hover { text-decoration:underline; }
 .fn-tbl-wrap { max-height:420px; overflow:auto; border:1px solid var(--border); border-radius:8px; }
+/* Program Summary header + Target waterfall */
+.prog-hd { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+.prog-title { font-size:19px; font-weight:800; color:var(--text); margin:0; }
+.prog-sub { font-size:13px; color:var(--muted); }
+.wf-panel { margin-top:28px; border-top:1px solid var(--border); padding-top:18px; }
+.wf-hd { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+.wf-title { font-size:15px; font-weight:800; color:var(--text); margin:0; }
+.wf-hd-sub { font-size:12.5px; color:var(--muted); font-weight:600; }
+.wf-row { display:flex; align-items:center; gap:12px; margin:5px 0; border-radius:6px; padding:1px 2px; }
+.wf-clickable { cursor:pointer; }
+.wf-clickable:hover { background:#F8FAFC; }
+.wf-label { width:240px; flex:none; font-size:12.5px; font-weight:600; color:var(--text); }
+.wf-sub { display:block; font-size:10.5px; color:var(--muted); font-weight:500; }
+.wf-track { flex:1; position:relative; height:26px; background:#F1F5F9; border-radius:5px; min-width:120px; }
+.wf-bar { position:absolute; top:0; height:26px; border-radius:4px; }
+.wf-target-bar { left:0; width:100%; background:repeating-linear-gradient(45deg,#E2E8F0,#E2E8F0 6px,#EDF1F6 6px,#EDF1F6 12px); border:1px solid #CBD5E1; }
+.wf-val { width:150px; flex:none; text-align:right; font-size:13px; font-weight:800; color:var(--text); white-space:nowrap; }
+.wf-pct { display:inline-block; min-width:44px; margin-left:6px; font-size:11.5px; font-weight:700; color:var(--muted); }
 .fn-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
 .fn-tbl th { position:sticky; top:0; background:#F8FAFC; text-align:left; padding:7px 10px; font-size:10px; text-transform:uppercase; color:var(--muted); border-bottom:2px solid var(--border); z-index:1; }
 .fn-tbl td { padding:7px 10px; border-bottom:1px solid var(--border); }
@@ -1539,35 +1557,46 @@ function renderPrograms(rows) {
     return reg(id, { label:m.label, color:m.color, bg:m.bg, rows:timing[k], kind:'timing', children:ownerChildren(id, timing[k]) });
   });
 
+  // #2: Reseller (Partnership) live — a scalar (PARTNERSHIP.exp), not row-based; no OB program.
+  const resellerArr   = (typeof PARTNERSHIP !== 'undefined' && PARTNERSHIP.loaded) ? (PARTNERSHIP.exp || 0) : 0;
+  const resellerItems = (typeof PARTNERSHIP !== 'undefined' && PARTNERSHIP.items) ? PARTNERSHIP.items.filter(it => it.delta > 0) : [];
+
   reg('inob', { label:'Currently in OB', desc:'the ARR we track to go-live', color:'#2563EB', rows:inOb, kind:'inob', children:timingIds });
-  reg('live', { label:'Went Live',       desc:'this month · no further tracking', color:'#16A34A', rows:live, kind:'terminal-live' });
+  reg('live', { label:'Went Live',       desc:'this month · no further tracking', color:'#16A34A', rows:live, kind:'terminal-live', extraArr:resellerArr, resellerItems });
   reg('drop', { label:'Dropped',         desc:'this month · no further tracking', color:'#DC2626', rows:drop, kind:'terminal-drop' });
-  // #4: Went Live sits above Currently in OB.
-  reg('total',{ label:'Total Funnel',    desc:'in OB at month start + added this month', color:'#0F172A', rows:total, kind:'root', children:['live','inob','drop'] });
+  // #4: Went Live sits above Currently in OB. Reseller live also rolls into the Total.
+  reg('total',{ label:'Total Funnel',    desc:'in OB at month start + added this month', color:'#0F172A', rows:total, kind:'root', extraArr:resellerArr, children:['live','inob','drop'] });
 
   // parent links (for breadcrumbs)
   Object.values(FN_NODES).forEach(n => n.children.forEach(c => { if (FN_NODES[c]) FN_NODES[c].parent = n.id; }));
   if (FN_SEL && !FN_NODES[FN_SEL]) FN_SEL = null;
 
   document.getElementById('programs-content').innerHTML =
-    `<div class="fn-wrap"><div class="fn-tree-panel">${fnRenderTree('total')}</div></div>`;
+    `<div class="prog-hd"><h2 class="prog-title">Program Summary</h2><span class="prog-sub">The month's OB funnel — where the ARR is, who owns the unblock</span></div>
+     <div class="fn-wrap"><div class="fn-tree-panel">${fnRenderTree('total')}</div></div>
+     ${fnWaterfallHtml()}`;
 }
 
+// A node's total ARR = its D2D rows + any scalar extra (e.g. reseller live on Went Live/Total).
+function nodeArr(n) { return n.rows.reduce((s, r) => s + r.arr, 0) + (n.extraArr || 0); }
+
 // #7: Studio (rooftops) / Vini (agents) split with ARR, for the box summary.
-function fnSplitHtml(rows, dark) {
+// extraArr (reseller) is appended as its own chip since it isn't a rooftop/agent count.
+function fnSplitHtml(rows, dark, extraArr) {
   const st = rows.filter(r => r.source !== 'vini'), vi = rows.filter(r => r.source === 'vini');
   const sArr = st.reduce((s, r) => s + r.arr, 0), vArr = vi.reduce((s, r) => s + r.arr, 0);
-  const sCol = dark ? '#93C5FD' : '#2563EB', vCol = dark ? '#67E8F9' : '#0891B2';
+  const sCol = dark ? '#93C5FD' : '#2563EB', vCol = dark ? '#67E8F9' : '#0891B2', rCol = dark ? '#F9A8D4' : '#DB2777';
   const parts = [];
   if (st.length) parts.push(`<span class="fn-sp"><b style="color:${sCol}">Studio</b> ${fmt$(sArr)} · ${st.length} ${st.length === 1 ? 'rooftop' : 'rooftops'}</span>`);
   if (vi.length) parts.push(`<span class="fn-sp"><b style="color:${vCol}">Vini</b> ${fmt$(vArr)} · ${vi.length} ${vi.length === 1 ? 'agent' : 'agents'}</span>`);
+  if (extraArr) parts.push(`<span class="fn-sp"><b style="color:${rCol}">Reseller</b> ${fmt$(extraArr)}</span>`);
   return parts.join('<span class="fn-sp-sep">·</span>') || '<span class="fn-sp" style="color:var(--faint)">—</span>';
 }
 
 function fnBox(id) {
   const n = FN_NODES[id];
-  const totalArr = FN_NODES.total.rows.reduce((s, r) => s + r.arr, 0) || 1;
-  const arr = n.rows.reduce((s, r) => s + r.arr, 0);
+  const totalArr = nodeArr(FN_NODES.total) || 1;
+  const arr = nodeArr(n);
   const pRaw = arr / totalArr * 100;
   const pct = arr === 0 ? '0%' : pRaw < 1 ? '<1%' : Math.round(pRaw) + '%';
   const ne  = new Set(n.rows.map(r => r.entityName || r.rooftopName || '?')).size;
@@ -1576,7 +1605,7 @@ function fnBox(id) {
   return `<div class="fn-box fn-${n.kind}${id === FN_SEL ? ' fn-sel' : ''}" data-fnid="${id}" style="border-left:4px solid ${n.color};${bg}" onclick="selectFunnel('${id}')">
     <div class="fn-box-main">${dot}<div class="fn-box-txt">
       <div class="fn-box-label">${n.label}${n.desc ? `<span class="fn-box-desc">${n.desc}</span>` : ''}</div>
-      <div class="fn-box-split">${fnSplitHtml(n.rows, n.kind === 'root')}</div>
+      <div class="fn-box-split">${fnSplitHtml(n.rows, n.kind === 'root', n.extraArr || 0)}</div>
     </div></div>
     <div class="fn-box-nums"><span class="fn-arr">${fmt$(arr)}</span><span class="fn-cnt">${ne} ${ne === 1 ? 'enterprise' : 'enterprises'}</span></div>
     <div class="fn-pct">${pct}</div>
@@ -1624,7 +1653,7 @@ function fnDetailHtml(id) {
     return `<span class="fn-badge" style="background:${v ? '#ECFEFF' : '#EFF6FF'};color:${v ? '#0891B2' : '#2563EB'}">${v ? 'Vini' : 'Studio'}</span>`;
   };
   const th = (h, r) => `<th style="text-align:${r ? 'right' : 'left'}">${h}</th>`;
-  const body = rws.length ? rws.map(r => `<tr>
+  const d2dBody = rws.map(r => `<tr>
       <td style="font-weight:600">${r.entityName || r.rooftopName || '—'}${r.rooftopName && r.rooftopName !== r.entityName ? `<div style="font-size:10.5px;color:var(--muted);font-weight:400">↳ ${r.rooftopName}</div>` : ''}</td>
       <td>${prodBadge(r)}</td>
       <td style="text-align:right;font-weight:700">${fmt$(r.arr)}</td>
@@ -1632,14 +1661,75 @@ function fnDetailHtml(id) {
       <td>${confBadge(r)}</td>
       <td style="color:var(--muted)">${cleanTxt(r.blockedReason) || '—'}</td>
       <td class="td-muted">${dateCol.f(r)}</td>
-    </tr>`).join('') : `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted)">No accounts.</td></tr>`;
+    </tr>`).join('');
+  // #2: Reseller (Partnership) go-lives — expansion accounts, no OB program / no per-rooftop detail.
+  const resItems = n.resellerItems || [];
+  const resBody = resItems.length ? resItems.slice().sort((a,b)=>b.delta-a.delta).map(it => `<tr style="background:#FDF2F8">
+      <td style="font-weight:600">${it.name}${it.region ? `<div style="font-size:10.5px;color:var(--muted);font-weight:400">↳ ${it.region}</div>` : ''}</td>
+      <td><span class="fn-badge" style="background:#FCE7F3;color:#DB2777">Reseller</span></td>
+      <td style="text-align:right;font-weight:700">${fmt$(it.delta)}</td>
+      <td style="color:var(--faint)">—</td>
+      <td><span class="fn-badge" style="background:#FCE7F3;color:#DB2777">Partnership</span></td>
+      <td style="color:var(--faint)">—</td>
+      <td class="td-muted">${it.product || '—'}</td>
+    </tr>`).join('') : '';
+  const body = (d2dBody + resBody) || `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted)">No accounts.</td></tr>`;
+  const resNote = resItems.length ? ` · <span style="color:#DB2777">+ ${resItems.length} reseller ${resItems.length === 1 ? 'account' : 'accounts'} (${fmt$(n.extraArr || 0)})</span>` : '';
 
   return `<div class="fn-inline-detail">
-    <div class="fn-detail-cap">Accounts contributing · <b>${rws.length}</b> ${rws.length === 1 ? 'rooftop' : 'rooftops'} · <b>${ne}</b> ${ne === 1 ? 'enterprise' : 'enterprises'} <span class="fn-detail-close" onclick="event.stopPropagation();selectFunnel('${id}')">✕ close</span></div>
+    <div class="fn-detail-cap">Accounts contributing · <b>${rws.length}</b> ${rws.length === 1 ? 'rooftop' : 'rooftops'} · <b>${ne}</b> ${ne === 1 ? 'enterprise' : 'enterprises'}${resNote} <span class="fn-detail-close" onclick="event.stopPropagation();selectFunnel('${id}')">✕ close</span></div>
     <div class="fn-tbl-wrap"><table class="fn-tbl">
       <thead><tr>${th('Account / Rooftop')}${th('Product')}${th('ARR', true)}${th('OB POC')}${th('Confirmation')}${th('Blocked Owner')}${th(dateCol.h)}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
+  </div>`;
+}
+
+// #3: Top-down waterfall — how the month's Live target is consumed (achieved / on-track /
+// blocked per owner / gap), each as % of target. MONTHLY UPKEEP: update LIVE_TARGET.
+function fnWaterfallHtml() {
+  const LIVE_TARGET = 1800000;   // July target to go Live
+  if (!FN_NODES.total) return '';
+  const wentLive = nodeArr(FN_NODES.live);
+  const julyNode = FN_NODES['inob|thisMonth'];
+  const owners = julyNode ? julyNode.children.map(id => FN_NODES[id]) : [];
+  const julySum = owners.reduce((s, o) => s + nodeArr(o), 0);
+  const gap = Math.max(0, LIVE_TARGET - wentLive - julySum);
+
+  const steps = [{ label:'Went Live', sub:'achieved · incl. reseller', val:wentLive, color:'#16A34A', tag:'done', nodeId:'live' }];
+  owners.forEach(o => {
+    const onTrack = /self-drive/.test(o.label);
+    steps.push({ label:o.label, sub: onTrack ? 'on track · Confirmed' : 'blocked', val:nodeArr(o), color:o.color, tag: onTrack ? 'ontrack' : 'blocked', nodeId:o.id });
+  });
+  steps.push({ label:'Gap — no July pipeline', sub:'target not yet covered', val:gap, color:'#CBD5E1', tag:'gap' });
+
+  const pctOf = v => v / LIVE_TARGET * 100;
+  let cursor = 100;
+  const rowsHtml = steps.map(s => {
+    const w = pctOf(s.val), left = Math.max(0, cursor - w);
+    cursor = left;
+    const pctTxt = s.val === 0 ? '0%' : w < 1 ? '<1%' : Math.round(w) + '%';
+    const icon = s.tag === 'blocked' ? '⛔ ' : s.tag === 'done' ? '✅ ' : s.tag === 'ontrack' ? '🟦 ' : '⬜ ';
+    const cls = s.nodeId ? 'wf-row wf-clickable' : 'wf-row';
+    const onclick = s.nodeId ? ` onclick="selectFunnel('${s.nodeId}')"` : '';
+    return `<div class="${cls}"${onclick}>
+      <div class="wf-label">${icon}${s.label}<span class="wf-sub">${s.sub}</span></div>
+      <div class="wf-track"><div class="wf-bar" style="left:${left}%;width:${Math.max(w, 0.5)}%;background:${s.color}"></div></div>
+      <div class="wf-val">${fmt$(s.val)}<span class="wf-pct">${pctTxt}</span></div>
+    </div>`;
+  }).join('');
+
+  const attain = Math.round(wentLive / LIVE_TARGET * 100);
+  const blockedSum = steps.filter(s => s.tag === 'blocked').reduce((a, s) => a + s.val, 0);
+  return `<div class="wf-panel">
+    <div class="wf-hd"><h3 class="wf-title">July Target — where the $${(LIVE_TARGET / 1e6).toFixed(1)}M stands</h3>
+      <span class="wf-hd-sub">✅ Live ${fmt$(wentLive)} (${attain}%) &nbsp;·&nbsp; ⛔ Blocked ${fmt$(blockedSum)} (${Math.round(blockedSum / LIVE_TARGET * 100)}%)</span></div>
+    <div class="wf-row">
+      <div class="wf-label" style="font-weight:800;color:var(--text)">Target — Live (July)</div>
+      <div class="wf-track"><div class="wf-bar wf-target-bar"></div></div>
+      <div class="wf-val" style="font-weight:800;color:var(--text)">${fmt$(LIVE_TARGET)}<span class="wf-pct">100%</span></div>
+    </div>
+    ${rowsHtml}
   </div>`;
 }
 
