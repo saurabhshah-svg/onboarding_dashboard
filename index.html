@@ -192,32 +192,33 @@ tr:hover td { background:#F8FAFC; }
 /* ── Programs: OB Funnel branched-block tracker ─────────────── */
 .fn-wrap { display:flex; flex-direction:column; gap:20px; }
 .fn-tree-panel { overflow-x:auto; padding-bottom:4px; }
-.fn-box { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--border); border-radius:8px; padding:9px 14px; cursor:pointer; transition:box-shadow .12s, background .12s; min-width:440px; }
-.fn-box:hover { background:#F8FAFC; }
+.fn-box { display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--border); border-radius:8px; padding:9px 14px; cursor:pointer; transition:box-shadow .12s, background .12s; min-width:460px; }
+.fn-box:hover { box-shadow:0 1px 6px rgba(15,23,42,.08); }
 .fn-box.fn-sel { box-shadow:0 0 0 2px var(--blue) inset; }
 .fn-box-main { display:flex; align-items:center; flex:1; min-width:0; }
+.fn-box-txt { min-width:0; }
 .fn-box-label { font-weight:700; font-size:13.5px; color:var(--text); }
 .fn-box-desc { font-weight:500; font-size:11.5px; color:var(--muted); margin-left:7px; }
+.fn-box-split { font-size:11px; color:var(--muted); margin-top:3px; white-space:nowrap; }
+.fn-sp-sep { margin:0 8px; color:var(--faint); }
 .fn-box-nums { text-align:right; white-space:nowrap; margin-left:12px; }
 .fn-arr { font-weight:800; font-size:14px; color:var(--text); display:block; line-height:1.15; }
 .fn-cnt { font-size:11px; color:var(--muted); }
 .fn-pct { width:46px; text-align:right; font-size:12px; font-weight:700; color:var(--muted); flex:none; }
-.fn-box.fn-root { background:#0F172A; border-color:#0F172A; min-width:460px; }
+.fn-box.fn-root { background:#0F172A; border-color:#0F172A; min-width:480px; }
 .fn-box.fn-root .fn-box-label { font-size:15px; font-weight:800; color:#fff; }
 .fn-box.fn-root .fn-arr { color:#fff; font-size:15px; }
-.fn-box.fn-root .fn-box-desc, .fn-box.fn-root .fn-cnt, .fn-box.fn-root .fn-pct { color:#CBD5E1; }
+.fn-box.fn-root .fn-box-desc, .fn-box.fn-root .fn-cnt, .fn-box.fn-root .fn-pct, .fn-box.fn-root .fn-box-split { color:#CBD5E1; }
 .fn-box.fn-inob { background:#EFF6FF; }
-.fn-box.fn-terminal-live, .fn-box.fn-terminal-drop { opacity:.9; }
 .fn-box.fn-owner .fn-box-label { font-weight:600; font-size:12.5px; }
 .fn-group { margin-left:26px; border-left:2px solid #DDE3EA; padding-top:2px; }
 .fn-item { position:relative; padding-left:20px; margin-top:8px; }
-.fn-item::before { content:""; position:absolute; left:0; top:21px; width:18px; height:2px; background:#DDE3EA; }
-.fn-detail-panel { border-top:1px solid var(--border); padding-top:14px; }
-.fn-crumb { font-size:12.5px; color:var(--muted); font-weight:600; margin-bottom:3px; }
-.fn-crumb-sep { color:var(--faint); margin:0 5px; }
-.fn-detail-sum { font-size:13px; color:var(--muted); }
-.fn-detail-sum b { font-size:19px; color:var(--text); font-weight:800; }
-.fn-tbl-wrap { max-height:440px; overflow:auto; border:1px solid var(--border); border-radius:8px; margin-top:12px; }
+.fn-item::before { content:""; position:absolute; left:0; top:26px; width:18px; height:2px; background:#DDE3EA; }
+.fn-inline-detail { margin:9px 2px 4px 0; }
+.fn-detail-cap { font-size:11.5px; color:var(--muted); font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:10px; }
+.fn-detail-close { color:var(--blue); cursor:pointer; font-weight:700; margin-left:auto; }
+.fn-detail-close:hover { text-decoration:underline; }
+.fn-tbl-wrap { max-height:420px; overflow:auto; border:1px solid var(--border); border-radius:8px; }
 .fn-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
 .fn-tbl th { position:sticky; top:0; background:#F8FAFC; text-align:left; padding:7px 10px; font-size:10px; text-transform:uppercase; color:var(--muted); border-bottom:2px solid var(--border); z-index:1; }
 .fn-tbl td { padding:7px 10px; border-bottom:1px solid var(--border); }
@@ -1468,21 +1469,21 @@ function cleanTxt(v)    { const s=(v||'').trim(); return /^#(ref|n\/a|value|div\
 function funnelDroppedThisMonth(r) { return r.dropDate && sameMonth(r.dropDate, CM, CY); }
 
 // Driving owner for an in-OB account: Confirmed → OB self-drives; Blocked → the Blocked Owner's team.
-const FUNNEL_OWNER_ORDER = ['OB (self-drive)', 'Sales / Client', 'Product', 'Tech', 'Unconfirmed'];
+const FUNNEL_OWNER_ORDER = ['OB (self-drive)', 'Sales Support / Client', 'Product', 'Tech', 'Unconfirmed'];
 const FUNNEL_OWNER_META = {
-  'OB (self-drive)': { color:'#16A34A', desc:'Confirmed · OB drives to go-live' },
-  'Sales / Client':  { color:'#DC2626', desc:'Blocked · Sales/Client owns the unblock' },
-  'Product':         { color:'#7C3AED', desc:'Blocked · Product owns the unblock' },
-  'Tech':            { color:'#2563EB', desc:'Blocked · Tech/Integration owns the unblock' },
-  'Unconfirmed':     { color:'#64748B', desc:'Not confirmed · OB to confirm' },
-  'Blocked — unassigned': { color:'#0891B2', desc:'Blocked · Blocked Owner not set' }
+  'OB (self-drive)':        { color:'#16A34A', desc:'Confirmed · OB drives to go-live' },
+  'Sales Support / Client': { color:'#DC2626', desc:'Blocked at Client · Sales Support drives the unblock' },
+  'Product':                { color:'#7C3AED', desc:'Blocked · Product owns the unblock' },
+  'Tech':                   { color:'#2563EB', desc:'Blocked · Tech/Integration owns the unblock' },
+  'Unconfirmed':            { color:'#64748B', desc:'Not confirmed · OB to confirm' },
+  'Blocked — unassigned':   { color:'#0891B2', desc:'Blocked · Blocked Owner not set' }
 };
 function funnelOwnerMeta(name) { return FUNNEL_OWNER_META[name] || { color:'#0891B2', desc:'Blocked · ' + name }; }
 function funnelOwner(r) {
   if (isConfirmedConf(r)) return 'OB (self-drive)';
   if (isBlockedConf(r)) {
     const o = (r.blockedReason || '').trim(), lo = o.toLowerCase();
-    if (/client|sales/.test(lo)) return 'Sales / Client';
+    if (/client|sales/.test(lo)) return 'Sales Support / Client';
     if (/product/.test(lo))      return 'Product';
     if (/tech|integration/.test(lo)) return 'Tech';
     return o || 'Blocked — unassigned';
@@ -1490,8 +1491,8 @@ function funnelOwner(r) {
   return 'Unconfirmed';
 }
 
-// Node registry + current selection for the branched block chart.
-let FN_NODES = {}, FN_SEL = 'inob';
+// Node registry + current selection for the branched block chart (null = nothing open).
+let FN_NODES = {}, FN_SEL = null;
 
 function renderPrograms(rows) {
   FN_NODES = {};
@@ -1514,10 +1515,11 @@ function renderPrograms(rows) {
   };
   const timing = { thisMonth:[], future:[], none:[] };
   inOb.forEach(r => timing[timeOf(r)].push(r));
+  // #1/#2/#3: July highlighted; Aug = lower tone of the same (blue) hue; No-date = grey.
   const timingMeta = {
-    thisMonth: { label:`Go-Live in ${curLabel}`,        color:'#2563EB' },
-    future:    { label:`Go-Live ${nextLabel} onwards`,  color:'#0891B2' },
-    none:      { label:'No Projection Date',            color:'#64748B' }
+    thisMonth: { label:`Go-Live in ${curLabel}`,        color:'#2563EB', bg:'#DBEAFE' },
+    future:    { label:`Go-Live ${nextLabel} onwards`,  color:'#60A5FA', bg:'#EFF6FF' },
+    none:      { label:'No Projection Date',            color:'#94A3B8', bg:'#F1F5F9' }
   };
 
   const ownerChildren = (parentId, rws) => {
@@ -1534,24 +1536,32 @@ function renderPrograms(rows) {
 
   const timingIds = ['thisMonth', 'future', 'none'].filter(k => timing[k].length).map(k => {
     const id = 'inob|' + k, m = timingMeta[k];
-    return reg(id, { label:m.label, color:m.color, rows:timing[k], kind:'timing', children:ownerChildren(id, timing[k]) });
+    return reg(id, { label:m.label, color:m.color, bg:m.bg, rows:timing[k], kind:'timing', children:ownerChildren(id, timing[k]) });
   });
 
   reg('inob', { label:'Currently in OB', desc:'the ARR we track to go-live', color:'#2563EB', rows:inOb, kind:'inob', children:timingIds });
   reg('live', { label:'Went Live',       desc:'this month · no further tracking', color:'#16A34A', rows:live, kind:'terminal-live' });
   reg('drop', { label:'Dropped',         desc:'this month · no further tracking', color:'#DC2626', rows:drop, kind:'terminal-drop' });
-  reg('total',{ label:'Total Funnel',    desc:'in OB at month start + added this month', color:'#0F172A', rows:total, kind:'root', children:['inob','live','drop'] });
+  // #4: Went Live sits above Currently in OB.
+  reg('total',{ label:'Total Funnel',    desc:'in OB at month start + added this month', color:'#0F172A', rows:total, kind:'root', children:['live','inob','drop'] });
 
   // parent links (for breadcrumbs)
   Object.values(FN_NODES).forEach(n => n.children.forEach(c => { if (FN_NODES[c]) FN_NODES[c].parent = n.id; }));
-  if (!FN_NODES[FN_SEL]) FN_SEL = 'inob';
+  if (FN_SEL && !FN_NODES[FN_SEL]) FN_SEL = null;
 
   document.getElementById('programs-content').innerHTML =
-    `<div class="fn-wrap">
-       <div class="fn-tree-panel">${fnRenderTree('total')}</div>
-       <div class="fn-detail-panel" id="fn-detail"></div>
-     </div>`;
-  fnRenderDetail();
+    `<div class="fn-wrap"><div class="fn-tree-panel">${fnRenderTree('total')}</div></div>`;
+}
+
+// #7: Studio (rooftops) / Vini (agents) split with ARR, for the box summary.
+function fnSplitHtml(rows, dark) {
+  const st = rows.filter(r => r.source !== 'vini'), vi = rows.filter(r => r.source === 'vini');
+  const sArr = st.reduce((s, r) => s + r.arr, 0), vArr = vi.reduce((s, r) => s + r.arr, 0);
+  const sCol = dark ? '#93C5FD' : '#2563EB', vCol = dark ? '#67E8F9' : '#0891B2';
+  const parts = [];
+  if (st.length) parts.push(`<span class="fn-sp"><b style="color:${sCol}">Studio</b> ${fmt$(sArr)} · ${st.length} ${st.length === 1 ? 'rooftop' : 'rooftops'}</span>`);
+  if (vi.length) parts.push(`<span class="fn-sp"><b style="color:${vCol}">Vini</b> ${fmt$(vArr)} · ${vi.length} ${vi.length === 1 ? 'agent' : 'agents'}</span>`);
+  return parts.join('<span class="fn-sp-sep">·</span>') || '<span class="fn-sp" style="color:var(--faint)">—</span>';
 }
 
 function fnBox(id) {
@@ -1562,40 +1572,42 @@ function fnBox(id) {
   const pct = arr === 0 ? '0%' : pRaw < 1 ? '<1%' : Math.round(pRaw) + '%';
   const ne  = new Set(n.rows.map(r => r.entityName || r.rooftopName || '?')).size;
   const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${n.color};margin-right:9px;flex:none"></span>`;
-  return `<div class="fn-box fn-${n.kind}${id === FN_SEL ? ' fn-sel' : ''}" style="border-left:4px solid ${n.color}" onclick="selectFunnel('${id}')">
-    <div class="fn-box-main">${dot}<div class="fn-box-label">${n.label}${n.desc ? `<span class="fn-box-desc">${n.desc}</span>` : ''}</div></div>
-    <div class="fn-box-nums"><span class="fn-arr">${fmt$(arr)}</span><span class="fn-cnt">${n.rows.length} rooftops · ${ne} ent</span></div>
+  const bg  = n.bg ? `background:${n.bg};` : '';
+  return `<div class="fn-box fn-${n.kind}${id === FN_SEL ? ' fn-sel' : ''}" data-fnid="${id}" style="border-left:4px solid ${n.color};${bg}" onclick="selectFunnel('${id}')">
+    <div class="fn-box-main">${dot}<div class="fn-box-txt">
+      <div class="fn-box-label">${n.label}${n.desc ? `<span class="fn-box-desc">${n.desc}</span>` : ''}</div>
+      <div class="fn-box-split">${fnSplitHtml(n.rows, n.kind === 'root')}</div>
+    </div></div>
+    <div class="fn-box-nums"><span class="fn-arr">${fmt$(arr)}</span><span class="fn-cnt">${ne} ${ne === 1 ? 'enterprise' : 'enterprises'}</span></div>
     <div class="fn-pct">${pct}</div>
   </div>`;
 }
 function fnRenderTree(id) {
   const kids = FN_NODES[id].children || [];
+  // #5: the account table opens inline, right below the clicked box.
+  const detail = id === FN_SEL ? fnDetailHtml(id) : '';
   const childHtml = kids.length
     ? `<div class="fn-group">${kids.map(cid => `<div class="fn-item">${fnRenderTree(cid)}</div>`).join('')}</div>`
     : '';
-  return fnBox(id) + childHtml;
+  return fnBox(id) + detail + childHtml;
 }
 function fnPath(id) { const out = []; let c = id; while (c) { out.unshift(c); c = FN_NODES[c] && FN_NODES[c].parent; } return out; }
 
 function selectFunnel(id) {
   if (!FN_NODES[id]) return;
-  FN_SEL = id;
+  FN_SEL = (FN_SEL === id) ? null : id;   // click again to close
   const panel = document.querySelector('.fn-tree-panel');
   if (panel) panel.innerHTML = fnRenderTree('total');
-  fnRenderDetail();
-  const d = document.getElementById('fn-detail');
-  if (d) d.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  if (FN_SEL) {
+    const box = document.querySelector(`.fn-box[data-fnid="${CSS.escape(FN_SEL)}"]`);
+    if (box) box.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  }
 }
 
-function fnRenderDetail() {
-  const el = document.getElementById('fn-detail'); if (!el) return;
-  const n = FN_NODES[FN_SEL]; if (!n) { el.innerHTML = ''; return; }
+function fnDetailHtml(id) {
+  const n = FN_NODES[id];
   const rws = n.rows.slice().sort((a, b) => b.arr - a.arr);
-  const arr = rws.reduce((s, r) => s + r.arr, 0);
   const ne  = new Set(rws.map(r => r.entityName || r.rooftopName || '?')).size;
-  const crumb = fnPath(FN_SEL).map((x, i, a) =>
-    i === a.length - 1 ? `<b>${FN_NODES[x].label}</b>` : FN_NODES[x].label
-  ).join('<span class="fn-crumb-sep">›</span>');
 
   // Date column adapts to the node kind.
   const dateCol = n.kind === 'terminal-live' ? { h:'Go-Live Date',   f:r => r.goLiveDate ? fmtDate(r.goLiveDate) : '—' }
@@ -1622,13 +1634,13 @@ function fnRenderDetail() {
       <td class="td-muted">${dateCol.f(r)}</td>
     </tr>`).join('') : `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted)">No accounts.</td></tr>`;
 
-  el.innerHTML = `
-    <div class="fn-crumb">${crumb}</div>
-    <div class="fn-detail-sum"><b>${fmt$(arr)}</b> · ${rws.length} rooftops · ${ne} enterprises</div>
+  return `<div class="fn-inline-detail">
+    <div class="fn-detail-cap">Accounts contributing · <b>${rws.length}</b> ${rws.length === 1 ? 'rooftop' : 'rooftops'} · <b>${ne}</b> ${ne === 1 ? 'enterprise' : 'enterprises'} <span class="fn-detail-close" onclick="event.stopPropagation();selectFunnel('${id}')">✕ close</span></div>
     <div class="fn-tbl-wrap"><table class="fn-tbl">
       <thead><tr>${th('Account / Rooftop')}${th('Product')}${th('ARR', true)}${th('OB POC')}${th('Confirmation')}${th('Blocked Owner')}${th(dateCol.h)}</tr></thead>
       <tbody>${body}</tbody>
-    </table></div>`;
+    </table></div>
+  </div>`;
 }
 
 // ─── SLACK VIEW (compact mobile scorecard) ───────────────────
