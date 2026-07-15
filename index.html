@@ -1536,9 +1536,10 @@ function cleanTxt(v)    { const s=(v||'').trim(); return /^#(ref|n\/a|value|div\
 function funnelDroppedThisMonth(r) { return r.dropDate && sameMonth(r.dropDate, CM, CY); }
 
 // Driving owner for an in-OB account: Confirmed → OB self-drives; Blocked → the Blocked Owner's team.
-const FUNNEL_OWNER_ORDER = ['OB (self-drive)', 'Sales Support / Client', 'Product', 'Tech', 'Unconfirmed'];
+const FUNNEL_OWNER_ORDER = ['OB', 'Sales Support / Client', 'Product', 'Tech', 'Unconfirmed'];
 const FUNNEL_OWNER_META = {
-  'OB (self-drive)':        { color:'#16A34A', desc:'Confirmed · OB drives to go-live' },
+  // OB owns both Confirmed (self-drives) AND Blocked-on-OB — merged into one bucket, split shown in-box.
+  'OB':                     { color:'#16A34A', desc:'OB owns · self-drive (Confirmed) + OB-blocked' },
   'Sales Support / Client': { color:'#DC2626', desc:'Blocked at Client · Sales Support drives the unblock' },
   'Product':                { color:'#7C3AED', desc:'Blocked · Product owns the unblock' },
   'Tech':                   { color:'#2563EB', desc:'Blocked · Tech/Integration owns the unblock' },
@@ -1547,12 +1548,13 @@ const FUNNEL_OWNER_META = {
 };
 function funnelOwnerMeta(name) { return FUNNEL_OWNER_META[name] || { color:'#0891B2', desc:'Blocked · ' + name }; }
 function funnelOwner(r) {
-  if (isConfirmedConf(r)) return 'OB (self-drive)';
+  if (isConfirmedConf(r)) return 'OB';                        // Confirmed → OB self-drives
   if (isBlockedConf(r)) {
     const o = (r.blockedReason || '').trim(), lo = o.toLowerCase();
     if (/client|sales/.test(lo)) return 'Sales Support / Client';
     if (/product/.test(lo))      return 'Product';
     if (/tech|integration/.test(lo)) return 'Tech';
+    if (/^ob$/.test(lo))         return 'OB';                 // Blocked-on-OB → same OB bucket
     return o || 'Blocked — unassigned';
   }
   return 'Unconfirmed';
@@ -1597,7 +1599,17 @@ function renderPrograms(rows) {
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || arrOf(byOwner[b]) - arrOf(byOwner[a]);
     }).map(o => {
       const m = funnelOwnerMeta(o);
-      return reg(parentId + '|' + o, { label:o, desc:m.desc, color:m.color, rows:byOwner[o], kind:'owner' });
+      const node = { label:o, desc:m.desc, color:m.color, rows:byOwner[o], kind:'owner' };
+      // OB is the merged bucket → summarize its self-drive (Confirmed) vs OB-blocked split in the box.
+      if (o === 'OB') {
+        const orows = byOwner[o], conf = orows.filter(isConfirmedConf), blk = orows.filter(isBlockedConf);
+        const sm = a => a.reduce((s, r) => s + r.arr, 0);
+        const parts = [];
+        if (conf.length) parts.push(`<span class="fn-sp"><b style="color:#16A34A">Self-drive</b> ${fmt$(sm(conf))} · ${conf.length}</span>`);
+        if (blk.length)  parts.push(`<span class="fn-sp"><b style="color:#D97706">OB-blocked</b> ${fmt$(sm(blk))} · ${blk.length}</span>`);
+        node.splitOverride = parts.join('<span class="fn-sp-sep">·</span>');
+      }
+      return reg(parentId + '|' + o, node);
     });
   };
 
@@ -1664,7 +1676,7 @@ function fnBox(id) {
   return `<div class="fn-box fn-${n.kind}${id === FN_SEL ? ' fn-sel' : ''}" data-fnid="${id}" style="border-left:4px solid ${n.color};${bg}" onclick="selectFunnel('${id}')">
     <div class="fn-box-main">${dot}<div class="fn-box-txt">
       <div class="fn-box-label">${n.label}${n.desc ? `<span class="fn-box-desc">${n.desc}</span>` : ''}</div>
-      <div class="fn-box-split">${fnSplitHtml(n.rows, n.kind === 'root', n.extraArr || 0)}</div>
+      <div class="fn-box-split">${n.splitOverride || fnSplitHtml(n.rows, n.kind === 'root', n.extraArr || 0)}</div>
     </div></div>
     <div class="fn-box-nums"><span class="fn-arr">${fmt$(arr)}</span><span class="fn-cnt">${ne} ${ne === 1 ? 'enterprise' : 'enterprises'}</span></div>
     <div class="fn-pct">${pct}</div>
@@ -1754,10 +1766,17 @@ function fnWaterfallHtml() {
   const julySum = owners.reduce((s, o) => s + nodeArr(o), 0);
   const gap = Math.max(0, LIVE_TARGET - wentLive - julySum);
 
+  const sm = a => a.reduce((s, r) => s + r.arr, 0);
   const steps = [{ label:'Went Live', sub:'achieved · incl. reseller', val:wentLive, color:'#16A34A', tag:'done', nodeId:'live' }];
   owners.forEach(o => {
-    const onTrack = /self-drive/.test(o.label);
-    steps.push({ label:o.label, sub: onTrack ? 'on track · Confirmed' : 'blocked', val:nodeArr(o), color:o.color, tag: onTrack ? 'ontrack' : 'blocked', nodeId:o.id });
+    // OB is merged (Confirmed self-drive + OB-blocked): split it so on-track vs blocked stays honest.
+    if (o.label === 'OB') {
+      const conf = o.rows.filter(isConfirmedConf), blk = o.rows.filter(isBlockedConf);
+      if (conf.length) steps.push({ label:'OB · self-drive', sub:'on track · Confirmed', val:sm(conf), color:'#16A34A', tag:'ontrack', nodeId:o.id });
+      if (blk.length)  steps.push({ label:'OB · blocked',    sub:'blocked · OB owns',    val:sm(blk),  color:'#0891B2', tag:'blocked', nodeId:o.id });
+    } else {
+      steps.push({ label:o.label, sub:'blocked', val:nodeArr(o), color:o.color, tag:'blocked', nodeId:o.id });
+    }
   });
   steps.push({ label:'Gap — no July pipeline', sub:'target not yet covered', val:gap, color:'#CBD5E1', tag:'gap' });
 
