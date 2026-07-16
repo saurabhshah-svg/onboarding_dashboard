@@ -44,6 +44,39 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // Consolidated "Program data" feed — merges the 3 OB tabs (vini/amer/apac) into one clean
+    // table of in-OB rows with Blocked Owner + Blocked Reason etc. Returns RAW CSV so a Google
+    // Sheet can pull it with a single =IMPORTDATA("<exec>?sheet=programdata").
+    if (sheet === 'programdata') {
+      const ss0 = SpreadsheetApp.openById(SPREADSHEET_ID);
+      const tabs = [{ gid: GID_MAP.vini, src: 'Vini' }, { gid: GID_MAP.amer, src: 'Studio-AMER' }, { gid: GID_MAP.apac, src: 'Studio-APAC' }];
+      const findCol = (h, names) => {
+        const low = h.map(x => String(x).trim().toLowerCase());
+        for (const n of names) { const i = low.indexOf(n); if (i >= 0) return i; }
+        for (const n of names) { for (let i = 0; i < low.length; i++) if (low[i].indexOf(n) >= 0) return i; }
+        return -1;
+      };
+      const out = [['Account', 'Enterprise ID', 'Product', 'ARR', 'Stage', 'Sub Stage', 'OB POC', 'Confirmation', 'Blocked Owner', 'Blocked Reason', 'Projected Live Date', 'Source']];
+      tabs.forEach(t => {
+        const sh = ss0.getSheets().find(s => s.getSheetId() === t.gid); if (!sh) return;
+        const vals = sh.getDataRange().getDisplayValues();
+        let hi = -1;
+        for (let i = 0; i < Math.min(vals.length, 8); i++) { if (vals[i].map(c => String(c).trim().toLowerCase()).indexOf('stage') >= 0) { hi = i; break; } }
+        if (hi < 0) return;
+        const h = vals[hi];
+        const c = { acct: findCol(h, ['account name', 'ent name']), ent: findCol(h, ['enterprise id']), prod: findCol(h, ['product']), arr: findCol(h, ['arr ($)', 'arr']), stage: findCol(h, ['stage']), sub: findCol(h, ['sub stage']), poc: findCol(h, ['ob poc']), conf: findCol(h, ['current month confirmations']), bo: findCol(h, ['blocked owner', 'blocked bucketing']), br: findCol(h, ['blocked remarks', 'past delay reasons/action items/remarks']), proj: findCol(h, ['projected live date']) };
+        for (let i = hi + 1; i < vals.length; i++) {
+          const r = vals[i], g = idx => (idx >= 0 && idx < r.length ? String(r[idx] || '') : '');
+          const acct = g(c.acct).trim(); if (!acct) continue;
+          const st = g(c.stage).trim().toLowerCase();
+          if (!st || st.indexOf('live') === 0 || st.indexOf('drop') >= 0 || st.indexOf('churn') >= 0) continue;   // in-OB only
+          out.push([acct, g(c.ent), (g(c.prod).trim() || (t.src === 'Vini' ? 'Vini' : 'Studio')), g(c.arr), g(c.stage), g(c.sub), g(c.poc), g(c.conf), g(c.bo), g(c.br), g(c.proj), t.src]);
+        }
+      });
+      const csvP = out.map(row => row.map(cell => { const s = String(cell == null ? '' : cell); return (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(',')).join('\n');
+      return ContentService.createTextOutput(csvP).setMimeType(ContentService.MimeType.CSV);
+    }
+
     let ssId, gid, useDisplay = false;
     if (sheet === 'churn') { ssId = CHURN_SPREADSHEET_ID; gid = CHURN_GID; useDisplay = true; }
     else if (sheet === 'aemap') { ssId = AE_SPREADSHEET_ID; gid = AE_GID; useDisplay = true; }
