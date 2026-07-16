@@ -851,7 +851,8 @@ function computeCurrBase() {
 
 // ─── Business logic ──────────────────────────────────────────
 function isLive(r) { return /^live$/i.test((r.stage||'').trim()); }
-function isInFunnel(r) { return !isLive(r) && !/drop|churn/i.test(r.stage||''); }
+// In-OB funnel = not live, not dropped/churned, and NOT "PWS" (PWS = pre-OB pipeline, not yet in OB).
+function isInFunnel(r) { const st=(r.stage||'').trim(); return !isLive(r) && !/drop|churn/i.test(st) && !/^pws/i.test(st); }
 function isDropped(r) { return /drop|churn/i.test(r.stage||''); }
 function sameMonth(d,m,y) { return d && d.getMonth()===m && d.getFullYear()===y; }
 function liveThisMonth(r) { return isLive(r) && sameMonth(r.goLiveDate, CM, CY); }
@@ -1057,7 +1058,7 @@ function parsePartnership(rows, deltaNames, bookMatch) {
 function parseVini(rows) {
   const hi = findHeaderRow(rows);
   const cm = buildColMap(rows[hi]);
-  return rows.slice(hi+1).filter(r => r.length > 3 && r[0]).map(r => ({
+  return rows.slice(hi+1).filter(r => r.length > 3 && (r[0] || r[1])).map(r => ({
     entityName:  getCol(r,cm,'account name'),
     rooftopName: getCol(r,cm,'rooftop name'),
     entId:       getCol(r,cm,'enterprise id'),
@@ -1091,7 +1092,7 @@ function parseVini(rows) {
 function parseAmer(rows) {
   const hi = findHeaderRow(rows);
   const cm = buildColMap(rows[hi]);
-  return rows.slice(hi+1).filter(r => r.length > 3 && r[0]).map(r => ({
+  return rows.slice(hi+1).filter(r => r.length > 3 && (r[0] || r[1])).map(r => ({
     entityName:  getCol(r,cm,'ent name'),
     rooftopName: getCol(r,cm,'rooftop name'),
     entId:       getCol(r,cm,'enterprise id'),
@@ -1126,7 +1127,7 @@ function parseAmer(rows) {
 function parseApacEmea(rows) {
   const hi = findHeaderRow(rows);
   const cm = buildColMap(rows[hi]);
-  return rows.slice(hi+1).filter(r => r.length > 3 && r[0]).map(r => {
+  return rows.slice(hi+1).filter(r => r.length > 3 && (r[0] || r[1])).map(r => {
     const region = getCol(r,cm,'region') || '';
     return {
       entityName:  getCol(r,cm,'ent name'),
@@ -2285,7 +2286,7 @@ function renderSlack(rows) {
   const liveARR = sum(liveRows), expARR = sum(expRows);
   const expConf = sum(expRows.filter(r => r.currentMonthConf === 'Confirmed'));  // confirmed-to-go-live only
   const liveTotal = liveARR + PARTNERSHIP.exp;   // Live this month incl. partnership expansion
-  const totalLARR = CURR_BASE + liveARR - sum(dropRows) - REVENUE_LOSS + PARTNERSHIP.net;
+  const totalLARR = CURR_BASE + liveARR - REVENUE_LOSS + PARTNERSHIP.net;   // OB/Sales drops were never live → don't reduce LARR
   const meLARR = totalLARR + expConf;       // Exp. Month-End = already live + confirmed
   const newLiveExp = liveTotal + expConf;   // already live this month (incl partnership) + confirmed
   const pct = (v,t) => t ? Math.round(v/t*100) : 0;
@@ -2307,7 +2308,7 @@ function renderSlack(rows) {
   );
   // D2D vs Partnership breakup captions
   const splitLine = (l1,v1,l2,v2,c2) => `<div style="font-size:11px;color:var(--muted);margin-top:5px;padding:0 2px;display:flex;justify-content:space-between"><span>${l1}: <b style="color:var(--text)">${fmtC(v1)}</b></span><span>${l2}: <b style="color:${c2}">${fmtC(v2)}</b></span></div>`;
-  const larrSplit = splitLine('D2D net', liveARR - sum(dropRows) - REVENUE_LOSS, 'Partnership net', PARTNERSHIP.net, PARTNERSHIP.net>=0?'#16A34A':'#DC2626');
+  const larrSplit = splitLine('D2D net', liveARR - REVENUE_LOSS, 'Partnership net', PARTNERSHIP.net, PARTNERSHIP.net>=0?'#16A34A':'#DC2626');
   const nlSplit   = splitLine('D2D live', liveARR, 'Partnership exp', PARTNERSHIP.exp, '#16A34A');
 
   // Blocked summary: Blocked Owner × Product
@@ -2404,13 +2405,13 @@ function renderDisplay(rows) {
   const obYestRows = rows.filter(r => isYest(r.obCallDate));
   const liveARR=sum(liveRows), furtherARR=sum(furtherRows), todayARR=sum(todayRows), blockedARR=sum(blockedRows), funnelARR=sum(funnelRows);
   const liveTotal = liveARR + PARTNERSHIP.exp;   // incl. partnership expansion
-  const totalLARR = CURR_BASE + liveARR - sum(dropRows) - REVENUE_LOSS + PARTNERSHIP.net;
+  const totalLARR = CURR_BASE + liveARR - REVENUE_LOSS + PARTNERSHIP.net;   // OB/Sales drops were never live → don't reduce LARR
   const meLARR = totalLARR + sum(expRows);
   const expConf = sum(expRows.filter(r=>r.currentMonthConf==='Confirmed'));
   const furtherConf = sum(furtherRows.filter(r=>r.currentMonthConf==='Confirmed'));
   const meLARRConf = totalLARR + expConf;
-  const larrStudio = CURR_BASE_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
-  const larrVini   = CURR_BASE_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
+  const larrStudio = CURR_BASE_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
+  const larrVini   = CURR_BASE_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
   const stTat = avg(rows.filter(isStudio).map(r=>r.liveTat).filter(x=>x>0));
   const viTat = avg(rows.filter(isVini).map(r=>r.liveTat).filter(x=>x>0));
   const avgTat = avg(rows.map(r=>r.liveTat).filter(x=>x>0));
@@ -2556,7 +2557,7 @@ function renderEmailView(rows) {
   const blockedRows = rows.filter(isBlockedConf);
   const liveARR=sum(liveRows), dropARR=sum(dropRows), expARR=sum(expRows), funnelARR=sum(funnelRows), blockedARR=sum(blockedRows);
   const liveTotal  = liveARR + PARTNERSHIP.exp;   // incl. partnership expansion
-  const totalLARR  = CURR_BASE + liveARR - dropARR - REVENUE_LOSS + PARTNERSHIP.net;
+  const totalLARR  = CURR_BASE + liveARR - REVENUE_LOSS + PARTNERSHIP.net;   // OB/Sales drops were never live → don't reduce LARR
   const expConfARR = sum(expRows.filter(isConfirmed));
   const meLARR     = totalLARR + expARR;
   const meLARRConf = totalLARR + expConfARR;
@@ -2574,8 +2575,8 @@ function renderEmailView(rows) {
   const heading = TODAY.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 
   const fmtC = n => { n = Math.round(n); const a = Math.abs(n); return a>=1e6 ? '$'+(n/1e6).toFixed(2)+'M' : a>=1e3 ? '$'+(n/1e3).toFixed(1)+'K' : '$'+n; };
-  const larrStudio = CURR_BASE_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - sum(dropRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
-  const larrVini   = CURR_BASE_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - sum(dropRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
+  const larrStudio = CURR_BASE_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
+  const larrVini   = CURR_BASE_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
 
   // EMAIL-SAFE markup: this exact HTML is shipped as the daily email body, so it
   // uses literal hex colors (Gmail strips CSS variables) and tables (no grid/flex).
@@ -2679,7 +2680,7 @@ function renderOverview(filtered) {
   const partExp = prodFilter === 'Vini' ? PARTNERSHIP.expVini : prodFilter === 'Studio' ? PARTNERSHIP.expStudio : PARTNERSHIP.exp;
   const partChurn = prodFilter === 'Vini' ? PARTNERSHIP.churnVini : prodFilter === 'Studio' ? PARTNERSHIP.churnStudio : PARTNERSHIP.churn;
   // Task 2: subtract Revenue Loss (from CS Dashboard) from LARR; add Partnership net movement
-  const totalLARR  = baseLARR + liveARR - droppedARR - revLoss + partNet;
+  const totalLARR  = baseLARR + liveARR - revLoss + partNet;   // OB/Sales drops were never live → don't reduce LARR
   const liveTotal  = liveARR + partExp;   // Live This Month incl. partnership expansion
   const expARR     = expRows.reduce((s,r)=>s+r.arr,0);
   const expN       = expRows.length;
@@ -2765,7 +2766,7 @@ function renderOverview(filtered) {
     kpill('Base', fmt$(baseLARR)) +
     kpill('+ Live (D2D)', fmt$(liveARR), 'var(--green)') +
     (partExp ? kpill('+ Partnership', fmt$(partExp), 'var(--green)') : '') +
-    kpill('− Churn (D2D)', fmt$(revLoss + droppedARR), 'var(--red)') +
+    kpill('− Churn (D2D)', fmt$(revLoss), 'var(--red)') +
     (partChurn ? kpill('− Churn (Ptnr)', fmt$(partChurn), 'var(--red)') : '')
   );
 
