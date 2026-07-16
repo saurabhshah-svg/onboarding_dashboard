@@ -31,6 +31,19 @@ const MAIL_SECRET = '';   // e.g. obmail-xxxxxxxx-xxxx-...
 function doGet(e) {
   try {
     const sheet = (e.parameter.sheet || 'vini').toLowerCase();
+
+    // Program 2/3/4 shared Owner/ETA inputs — read the ProgramInputs tab (by name).
+    if (sheet === 'proginputs') {
+      const sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('ProgramInputs');
+      const values = sh ? sh.getDataRange().getDisplayValues() : [['key', 'owner', 'eta', 'updated_at']];
+      const csv = values.map(row => row.map(cell => {
+        const s = String(cell === null || cell === undefined ? '' : cell);
+        return (s.includes(',') || s.includes('"') || s.includes('\n')) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }).join(',')).join('\n');
+      return ContentService.createTextOutput(JSON.stringify({ csv, syncedAt: new Date().toISOString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     let ssId, gid, useDisplay = false;
     if (sheet === 'churn') { ssId = CHURN_SPREADSHEET_ID; gid = CHURN_GID; useDisplay = true; }
     else if (sheet === 'aemap') { ssId = AE_SPREADSHEET_ID; gid = AE_GID; useDisplay = true; }
@@ -63,6 +76,8 @@ function doGet(e) {
 function doPost(e) {
   try {
     const b = JSON.parse(e.postData.contents);
+    // Program 2/3/4 shared Owner/ETA save (no secret — low-value, sheet-scoped, structured).
+    if (b.action === 'progInput') return saveProgInput(b);
     if (!MAIL_SECRET || b.secret !== MAIL_SECRET) return respond({ error: 'unauthorized' });
     const opts = { htmlBody: b.html || '', name: 'Spyne OB Reports' };
     if (b.png) {
@@ -74,6 +89,23 @@ function doPost(e) {
   } catch (err) {
     return respond({ error: err.toString() });
   }
+}
+
+// Upsert one Program 2/3/4 Owner/ETA input into the ProgramInputs tab (created if missing),
+// keyed by the dashboard's row key. Shared across all viewers.
+function saveProgInput(b) {
+  const key = String(b.key || '').trim();
+  if (!key) return respond({ error: 'no key' });
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sh = ss.getSheetByName('ProgramInputs');
+  if (!sh) { sh = ss.insertSheet('ProgramInputs'); sh.appendRow(['key', 'owner', 'eta', 'updated_at']); }
+  const data = sh.getDataRange().getValues();
+  let row = -1;
+  for (let i = 1; i < data.length; i++) { if (String(data[i][0]) === key) { row = i + 1; break; } }
+  const now = new Date().toISOString();
+  if (row === -1) sh.appendRow([key, b.owner || '', b.eta || '', now]);
+  else sh.getRange(row, 2, 1, 3).setValues([[b.owner || '', b.eta || '', now]]);
+  return respond({ ok: true });
 }
 
 // Run this ONCE from the editor to grant the Gmail permission and confirm sending works.

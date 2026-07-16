@@ -245,6 +245,7 @@ tr:hover td { background:#F8FAFC; }
 .ub-arr { text-align:right; font-weight:700; white-space:nowrap; }
 .ub-input { width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:6px; padding:5px 8px; font-size:12px; font-family:inherit; background:#FFFDF5; }
 .ub-input:focus { outline:none; border-color:var(--blue); background:#fff; }
+.prog-save-note { position:fixed; bottom:18px; right:18px; background:#0F172A; color:#fff; font-size:12.5px; font-weight:700; padding:8px 14px; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.18); opacity:0; transition:opacity .3s; z-index:100; pointer-events:none; }
 /* Trends tab */
 .tr-note { background:#FEF9E7; border:1px solid #FCE9A8; color:#92700E; border-radius:8px; padding:9px 14px; font-size:12.5px; margin-bottom:16px; }
 .tr-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(440px,1fr)); gap:16px; margin-top:16px; }
@@ -622,6 +623,8 @@ const EMBEDDED_DATA = {
     <div id="slack-content" style="padding:16px 12px 24px"></div>
   </div>
 </div>
+
+<div id="prog-save-note" class="prog-save-note"></div>
 
 <!-- Trends Tab — historical change-tracking (Supabase) -->
 <div id="tab-trends" class="main">
@@ -1361,7 +1364,8 @@ async function loadAllData() {
         fetchLiveSheet('churn').catch(err => { console.warn('Churn fetch failed, using fallback REVENUE_LOSS:', err); return null; }),
         fetchLiveSheet('aemap').catch(err => { console.warn('AE map fetch failed, AE column will be blank:', err); return null; }),
         fetchPartnership().catch(err => { console.warn('Partnership fetch failed, channel will show $0:', err); return null; }),
-        fetchProg1().catch(err => { console.warn('Program 1 fetch failed, section will be hidden:', err); return null; })
+        fetchProg1().catch(err => { console.warn('Program 1 fetch failed, section will be hidden:', err); return null; }),
+        fetchProgInputs().catch(() => null)   // shared Owner/ETA for Programs 2/3/4 (no-ops if route not deployed)
       ]);
       viniCSV = v.csv; amerCSV = a.csv; apacCSV = p.csv;
       if (c && c.csv) {
@@ -1914,13 +1918,42 @@ function buildProg1(reg) {
 // entered on the dashboard and persisted in localStorage (dashboard-only, this browser).
 function escHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function escAttr(s) { return escHtml(s).replace(/"/g, '&quot;'); }
-let PROG2_INPUTS = {};
+let PROG2_INPUTS = {}, progSaveTimers = {};
 try { PROG2_INPUTS = JSON.parse(localStorage.getItem('ob_prog2_inputs') || '{}'); } catch (e) {}
+// Shared Owner/ETA: read from the ProgramInputs sheet via the Apps Script proxy so every viewer
+// sees the same values (shared wins over local). No-ops gracefully if the proxy route isn't
+// deployed yet → falls back to localStorage only.
+async function fetchProgInputs() {
+  try {
+    const resp = await fetch(APPS_SCRIPT_URL + '?sheet=proginputs');
+    if (!resp.ok) return;
+    const json = await resp.json();
+    if (json.error || !json.csv) return;
+    const rows = parseCSV(json.csv);   // header: key,owner,eta,updated_at
+    const hi = rows.findIndex(r => (r[0] || '').toLowerCase() === 'key');
+    for (let i = (hi >= 0 ? hi + 1 : 1); i < rows.length; i++) {
+      const k = (rows[i][0] || '').trim(); if (!k) continue;
+      PROG2_INPUTS[k] = { owner: rows[i][1] || '', eta: rows[i][2] || '' };   // shared is source of truth
+    }
+    try { localStorage.setItem('ob_prog2_inputs', JSON.stringify(PROG2_INPUTS)); } catch (e) {}
+  } catch (e) { /* proxy route not deployed yet — localStorage only */ }
+}
 function saveProg2(el) {
   const k = el.dataset.k, f = el.dataset.f;
   PROG2_INPUTS[k] = PROG2_INPUTS[k] || { owner: '', eta: '' };
   PROG2_INPUTS[k][f] = el.value;
   try { localStorage.setItem('ob_prog2_inputs', JSON.stringify(PROG2_INPUTS)); } catch (e) {}
+  // Debounced shared write through the proxy. text/plain body = no CORS preflight; fire-and-forget.
+  clearTimeout(progSaveTimers[k]);
+  progSaveTimers[k] = setTimeout(() => {
+    const v = PROG2_INPUTS[k], note = document.getElementById('prog-save-note');
+    if (note) { note.textContent = '⟳ Saving…'; note.style.opacity = '1'; }
+    const show = (txt, ms) => { if (note) { note.textContent = txt; note.style.opacity = '1'; setTimeout(() => { note.style.opacity = '0'; }, ms); } };
+    fetch(APPS_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'progInput', key: k, owner: v.owner || '', eta: v.eta || '' }) })
+      .then(async r => { let ok = false; try { ok = /"ok"\s*:\s*true/.test(await r.text()); } catch (e) {} show(ok ? '✓ Saved for everyone' : '✓ Saved on this device', 1600); })
+      .catch(() => show('✓ Saved on this device', 2000));
+  }, 600);
 }
 function unblockProgramHtml(programNo, ownerLabel, matchLower, accent) {
   const rows = allRows.filter(r => isInFunnel(r) && isBlockedConf(r) && (r.blockedReason || '').trim().toLowerCase() === matchLower);
@@ -1953,7 +1986,7 @@ function unblockProgramHtml(programNo, ownerLabel, matchLower, accent) {
         <tbody>${body}</tbody></table></div>`;
   };
   const inner = rows.length ? products.map(tableFor).join('') : `<div class="empty-state">No ${escHtml(ownerLabel)}-blocked accounts in OB right now. 🎉</div>`;
-  return `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program ${programNo} — ${escHtml(ownerLabel)} Unblocking</h2><span class="prog-sub">Problem-first · in-OB ARR blocked on ${escHtml(ownerLabel)} · Owner &amp; ETA are entered on the dashboard (saved on this device)</span></div>
+  return `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program ${programNo} — ${escHtml(ownerLabel)} Unblocking</h2><span class="prog-sub">Problem-first · in-OB ARR blocked on ${escHtml(ownerLabel)} · Owner &amp; ETA are entered on the dashboard, shared with everyone</span></div>
     <div class="ub-total" style="border-left-color:${accent}"><span class="ub-total-label">ARR Stuck on ${escHtml(ownerLabel)}</span> <span class="ub-total-val">${fmt$(totalArr)}</span><span class="ub-total-sub">${rows.length} ${rows.length === 1 ? 'account' : 'accounts'}</span></div>
     ${inner}`;
 }
