@@ -61,3 +61,10 @@ jobs:
           APPS_SCRIPT_URL: https://script.google.com/macros/s/AKfycbzg3iR4fBWYjpwfG_68CDueg5RjqEZjQSNrUmqtEjfZl9Pe7Ai_7a5nqzG7mdyHzsWWdA/exec
           MAIL_SECRET: ${{ secrets.MAIL_SECRET }}
         run: node .github/scripts/email-report.js
+      - name: Snapshot OB accounts → Supabase (history/trends)
+        if: ${{ always() }}   # independent of the report steps; self-skips if Supabase env unset
+        env:
+          SNAPSHOT_URL: https://spyne-onboarding-dashboard.vercel.app/
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node .github/scripts/snapshot-supabase.js

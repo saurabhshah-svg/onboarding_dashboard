@@ -245,6 +245,28 @@ tr:hover td { background:#F8FAFC; }
 .ub-arr { text-align:right; font-weight:700; white-space:nowrap; }
 .ub-input { width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:6px; padding:5px 8px; font-size:12px; font-family:inherit; background:#FFFDF5; }
 .ub-input:focus { outline:none; border-color:var(--blue); background:#fff; }
+/* Trends tab */
+.tr-note { background:#FEF9E7; border:1px solid #FCE9A8; color:#92700E; border-radius:8px; padding:9px 14px; font-size:12.5px; margin-bottom:16px; }
+.tr-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(440px,1fr)); gap:16px; margin-top:16px; }
+.tr-card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+.tr-card-hd { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+.tr-card-title { font-size:14px; font-weight:800; color:var(--text); }
+.tr-card-sub { font-size:11.5px; color:var(--muted); }
+.tr-tbl-wrap { max-height:340px; overflow:auto; border:1px solid var(--border); border-radius:8px; }
+.tr-tbl { width:100%; border-collapse:collapse; font-size:12px; }
+.tr-tbl th { position:sticky; top:0; background:#F8FAFC; text-align:left; padding:6px 10px; font-size:9.5px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); border-bottom:2px solid var(--border); z-index:1; }
+.tr-tbl td { padding:6px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+.tr-tbl tr:last-child td { border-bottom:none; }
+.tr-acct { font-weight:600; white-space:normal; max-width:240px; }
+.tr-r { text-align:right; }
+.tr-badge { font-size:10px; font-weight:700; padding:1px 7px; border-radius:10px; }
+.tr-empty { padding:16px; text-align:center; color:var(--muted); font-size:12.5px; }
+.tr-more { padding:6px 10px; font-size:11px; color:var(--muted); }
+.tr-setup { background:#fff; border:1px solid var(--border); border-left:4px solid var(--blue); border-radius:10px; padding:16px 20px; max-width:640px; }
+.tr-setup-title { font-size:15px; font-weight:800; color:var(--text); margin-bottom:10px; }
+.tr-setup-list { margin:0 0 10px; padding-left:20px; font-size:13px; color:var(--text); line-height:1.7; }
+.tr-setup-list code { background:#F1F5F9; padding:1px 5px; border-radius:4px; font-size:12px; }
+.tr-setup-note { font-size:12px; color:var(--muted); }
 .wf-panel { margin-top:28px; border-top:1px solid var(--border); padding-top:18px; }
 .wf-hd { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
 .wf-title { font-size:15px; font-weight:800; color:var(--text); margin:0; }
@@ -296,6 +318,7 @@ const EMBEDDED_DATA = {
   <div class="tab" onclick="switchTab('programs')">Programs</div>
   <div class="tab" onclick="switchTab('analytics')">Analytics</div>
   <div class="tab" onclick="switchTab('views')">Views</div>
+  <div class="tab" onclick="switchTab('trends')">Trends</div>
 </div>
 
 <!-- Filter bars -->
@@ -597,6 +620,13 @@ const EMBEDDED_DATA = {
   </div>
   <div id="view-slack" style="display:none">
     <div id="slack-content" style="padding:16px 12px 24px"></div>
+  </div>
+</div>
+
+<!-- Trends Tab — historical change-tracking (Supabase) -->
+<div id="tab-trends" class="main">
+  <div style="padding:8px 24px 24px 24px">
+    <div id="trends-content"></div>
   </div>
 </div>
 
@@ -1158,7 +1188,7 @@ function showErrorBanner(msg) {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab').forEach((el,i) => {
-    const tabs = ['overview','studio','vini','programs','analytics','views'];
+    const tabs = ['overview','studio','vini','programs','analytics','views','trends'];
     el.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.main').forEach(el => el.classList.remove('active'));
@@ -1387,6 +1417,8 @@ function renderAll() {
     renderPrograms(allRows);
   } else if (currentTab === 'analytics') {
     renderAnalytics(allRows);
+  } else if (currentTab === 'trends') {
+    renderTrends();
   } else if (currentTab === 'views') {
     if (currentView === 'email')        renderEmailView(allRows);
     else if (currentView === 'display') renderDisplay(allRows);
@@ -1924,6 +1956,221 @@ function unblockProgramHtml(programNo, ownerLabel, matchLower, accent) {
   return `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program ${programNo} — ${escHtml(ownerLabel)} Unblocking</h2><span class="prog-sub">Problem-first · in-OB ARR blocked on ${escHtml(ownerLabel)} · Owner &amp; ETA are entered on the dashboard (saved on this device)</span></div>
     <div class="ub-total" style="border-left-color:${accent}"><span class="ub-total-label">ARR Stuck on ${escHtml(ownerLabel)}</span> <span class="ub-total-val">${fmt$(totalArr)}</span><span class="ub-total-sub">${rows.length} ${rows.length === 1 ? 'account' : 'accounts'}</span></div>
     ${inner}`;
+}
+
+// ═══ TRENDS — historical change-tracking from Supabase ══════════════════════
+// Fill these two with your Supabase project URL + anon (public) key. The anon key is
+// read-only (RLS), safe in client code. Leave blank → Trends shows a setup card.
+const SUPABASE_URL = '';        // e.g. https://abcd1234.supabase.co
+const SUPABASE_ANON_KEY = '';   // public anon key
+function supabaseReady() { return !!(SUPABASE_URL && SUPABASE_ANON_KEY); }
+
+let TRENDS_ACCT = null, TRENDS_DAILY = null, TRENDS_LOADED = false, TRENDS_ERR = null, trendsChart = null;
+
+async function sbFetch(pathQuery) {
+  const res = await fetch(SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/' + pathQuery, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY }
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status + ' — ' + (await res.text()).slice(0, 200));
+  return res.json();
+}
+async function loadTrends() {
+  if (TRENDS_LOADED || !supabaseReady()) return;
+  try {
+    const [acct, daily] = await Promise.all([
+      sbFetch('v_account_history?select=*&limit=5000'),
+      sbFetch('v_daily_rollup?select=*&order=snapshot_date.asc&limit=1000')
+    ]);
+    TRENDS_ACCT = acct; TRENDS_DAILY = daily; TRENDS_LOADED = true; TRENDS_ERR = null;
+  } catch (e) { TRENDS_ERR = e.message; }
+}
+
+const TR_MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function trFmtD(s) { if (!s) return '—'; const p = String(s).slice(0, 10).split('-'); return +p[2] + ' ' + TR_MON[(+p[1]) - 1]; }
+function trDelta(a, b) { if (!a || !b) return null; return Math.round((new Date(String(b).slice(0,10)) - new Date(String(a).slice(0,10))) / 86400000); }
+function trDeltaBadge(d, upIsBad) {
+  if (d == null) return '<span style="color:var(--faint)">—</span>';
+  if (d === 0) return '<span class="tr-badge" style="background:#EEF2F7;color:#64748B">no change</span>';
+  const bad = upIsBad ? d > 0 : d < 0;
+  return `<span class="tr-badge" style="background:${bad ? '#FEE2E2' : '#DCFCE7'};color:${bad ? '#DC2626' : '#16A34A'}">${d > 0 ? '+' : ''}${d}d</span>`;
+}
+function trProdBadge(src) { const v = src === 'vini'; return `<span class="tr-badge" style="background:${v ? '#ECFEFF' : '#EFF6FF'};color:${v ? '#0891B2' : '#2563EB'}">${v ? 'Vini' : 'Studio'}</span>`; }
+function trCard(title, sub, inner) { return `<div class="tr-card"><div class="tr-card-hd"><span class="tr-card-title">${title}</span>${sub ? `<span class="tr-card-sub">${sub}</span>` : ''}</div>${inner}</div>`; }
+function trTable(headers, body, empty) {
+  if (!body) return `<div class="tr-empty">${empty || 'Nothing to show yet.'}</div>`;
+  return `<div class="tr-tbl-wrap"><table class="tr-tbl"><thead><tr>${headers.map(h => `<th${h.r ? ' style="text-align:right"' : ''}>${h.t}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function trendsSetupCard() {
+  return `<div class="prog-hd"><h2 class="prog-title">Trends</h2><span class="prog-sub">Historical change-tracking — powered by daily Supabase snapshots</span></div>
+    <div class="tr-setup">
+      <div class="tr-setup-title">⚙️ Connect Supabase to turn this on</div>
+      <ol class="tr-setup-list">
+        <li>Create a Supabase project → run <code>dashboard/supabase/schema.sql</code> in the SQL editor.</li>
+        <li>Add repo secrets <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_KEY</code> (Settings → Secrets → Actions) so the 9 AM job writes a daily snapshot.</li>
+        <li>Send me the <b>Project URL</b> + <b>anon key</b> — I'll wire them into <code>SUPABASE_URL</code> / <code>SUPABASE_ANON_KEY</code> and this tab lights up.</li>
+      </ol>
+      <div class="tr-setup-note">History accrues from the first snapshot — the change views fill in day by day.</div>
+    </div>`;
+}
+
+function renderTrends() {
+  const el = document.getElementById('trends-content'); if (!el) return;
+  if (!supabaseReady()) { el.innerHTML = trendsSetupCard(); return; }
+  if (!TRENDS_LOADED && !TRENDS_ERR) {
+    el.innerHTML = `<div class="prog-hd"><h2 class="prog-title">Trends</h2></div><div class="empty-state">Loading history from Supabase…</div>`;
+    loadTrends().then(() => { if (currentTab === 'trends') renderTrends(); });
+    return;
+  }
+  if (TRENDS_ERR) { el.innerHTML = `<div class="prog-hd"><h2 class="prog-title">Trends</h2></div><div class="empty-state">Couldn't load Supabase — ${escHtml(TRENDS_ERR)}</div>`; return; }
+
+  const A = TRENDS_ACCT || [], D = TRENDS_DAILY || [];
+  if (!A.length) { el.innerHTML = `<div class="prog-hd"><h2 class="prog-title">Trends</h2></div><div class="empty-state">No snapshots yet — the daily job writes the first at 9 AM IST. Check back tomorrow.</div>`; return; }
+
+  const isLiveStage = s => /^live/i.test(s || '');
+  const isDropStage = s => /drop|churn/i.test(s || '');
+  const first = D.length ? D[0].snapshot_date : A.reduce((m, r) => r.first_seen < m ? r.first_seen : m, A[0].first_seen);
+  const last  = D.length ? D[D.length - 1].snapshot_date : A.reduce((m, r) => r.last_seen > m ? r.last_seen : m, A[0].last_seen);
+  const nDays = D.length || 1;
+  const money = fmt$;
+  const coverageBanner = nDays < 2
+    ? `<div class="tr-note">📅 Only <b>1 day</b> of history so far — the change views below fill in as daily snapshots accrue (next at 9 AM IST).</div>` : '';
+
+  // ── 1) Funnel flow over time (daily rollup) ──
+  const flowCard = trCard('Funnel flow over time', `${nDays} ${nDays === 1 ? 'day' : 'days'} · ${trFmtD(first)} → ${trFmtD(last)}`,
+    D.length >= 2 ? '<div style="height:240px"><canvas id="trends-flow-chart"></canvas></div>'
+                  : `<div class="tr-empty">Needs ≥2 daily snapshots to draw the trend.</div>`);
+
+  // ── 2) Projected-date changes ──
+  const projMoved = A.filter(r => r.first_projection_date && r.current_projection_date && r.first_projection_date !== r.current_projection_date && !isLiveStage(r.current_stage) && !isDropStage(r.current_stage))
+    .map(r => ({ ...r, d: trDelta(r.first_projection_date, r.current_projection_date) }))
+    .sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
+  const projArr = projMoved.reduce((s, r) => s + (+r.current_arr || 0), 0);
+  const projBody = projMoved.slice(0, 15).map(r => `<tr>
+      <td class="tr-acct">${escHtml(r.account || r.row_key)} ${trProdBadge(r.source)}</td>
+      <td>${trFmtD(r.first_projection_date)}</td><td>${trFmtD(r.current_projection_date)}</td>
+      <td>${trDeltaBadge(r.d, true)}</td><td class="tr-r">${r.projection_variants}×</td>
+      <td class="tr-r">${money(+r.current_arr || 0)}</td></tr>`).join('');
+  const projCard = trCard('Changes in Projected Date',
+    projMoved.length ? `${projMoved.length} accounts moved · ${money(projArr)} ARR · avg ${projMoved.length ? Math.round(projMoved.reduce((s, r) => s + r.d, 0) / projMoved.length) : 0}d` : 'No projection-date changes yet',
+    trTable([{ t: 'Account' }, { t: 'Original' }, { t: 'Current' }, { t: 'Δ (slip+)' }, { t: 'Moves', r: 1 }, { t: 'ARR', r: 1 }], projBody, nDays < 2 ? 'Fills in once there are ≥2 days.' : 'No changes — projected dates holding steady. 🎉') +
+    (projMoved.length > 15 ? `<div class="tr-more">+${projMoved.length - 15} more</div>` : ''));
+
+  // ── 3) Go-live date changes ──
+  const glMoved = A.filter(r => r.first_go_live_date && r.current_go_live_date && r.first_go_live_date !== r.current_go_live_date)
+    .map(r => ({ ...r, d: trDelta(r.first_go_live_date, r.current_go_live_date) })).sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
+  const glBody = glMoved.slice(0, 15).map(r => `<tr>
+      <td class="tr-acct">${escHtml(r.account || r.row_key)} ${trProdBadge(r.source)}</td>
+      <td>${trFmtD(r.first_go_live_date)}</td><td>${trFmtD(r.current_go_live_date)}</td>
+      <td>${trDeltaBadge(r.d, true)}</td><td class="tr-r">${money(+r.current_arr || 0)}</td></tr>`).join('');
+  const glCard = trCard('Changes in Go-Live Date', glMoved.length ? `${glMoved.length} accounts` : 'No go-live-date changes yet',
+    trTable([{ t: 'Account' }, { t: 'First set' }, { t: 'Current' }, { t: 'Δ (push+)' }, { t: 'ARR', r: 1 }], glBody, 'No go-live dates have moved.'));
+
+  // ── 4) Live vs original projection (slippage) ──
+  const liveCohort = A.filter(r => isLiveStage(r.current_stage) && r.first_projection_date && r.current_go_live_date)
+    .map(r => ({ ...r, d: trDelta(r.first_projection_date, r.current_go_live_date) }));
+  const onTime = liveCohort.filter(r => r.d <= 0), lcArr = liveCohort.reduce((s, r) => s + (+r.current_arr || 0), 0);
+  const avgSlip = liveCohort.length ? Math.round(liveCohort.reduce((s, r) => s + r.d, 0) / liveCohort.length) : 0;
+  const lcBody = liveCohort.sort((a, b) => b.d - a.d).slice(0, 15).map(r => `<tr>
+      <td class="tr-acct">${escHtml(r.account || r.row_key)} ${trProdBadge(r.source)}</td>
+      <td>${trFmtD(r.first_projection_date)}</td><td>${trFmtD(r.current_go_live_date)}</td>
+      <td>${trDeltaBadge(r.d, true)}</td><td class="tr-r">${money(+r.current_arr || 0)}</td></tr>`).join('');
+  const lcCard = trCard('Went Live — vs original projection',
+    liveCohort.length ? `${liveCohort.length} live (tracked) · ${Math.round(onTime.length / liveCohort.length * 100)}% on/before original · avg ${avgSlip >= 0 ? '+' : ''}${avgSlip}d · ${money(lcArr)}` : 'No tracked go-lives yet',
+    trTable([{ t: 'Account' }, { t: 'Original proj' }, { t: 'Actual go-live' }, { t: 'Δ (late+)' }, { t: 'ARR', r: 1 }], lcBody, 'Accounts that go live after snapshotting begins show here (need their original projection captured first).'));
+
+  // ── 5) Forecast reliability (by original projection month) ──
+  const byMonth = {};
+  A.filter(r => r.first_projection_date).forEach(r => {
+    const m = String(r.first_projection_date).slice(0, 7);
+    (byMonth[m] = byMonth[m] || { arr: 0, live: 0, n: 0, liveN: 0 });
+    byMonth[m].arr += +r.current_arr || 0; byMonth[m].n++;
+    if (isLiveStage(r.current_stage)) { byMonth[m].live += +r.current_arr || 0; byMonth[m].liveN++; }
+  });
+  const relBody = Object.keys(byMonth).sort().map(m => {
+    const x = byMonth[m], pct = x.arr ? Math.round(x.live / x.arr * 100) : 0;
+    return `<tr><td>${trFmtD(m + '-01').replace(/^\d+ /, '')} ${m.slice(0, 4)}</td>
+      <td class="tr-r">${money(x.arr)}</td><td class="tr-r">${money(x.live)}</td>
+      <td class="tr-r"><span class="tr-badge" style="background:${pct >= 80 ? '#DCFCE7' : pct >= 50 ? '#FEF3C7' : '#FEE2E2'};color:${pct >= 80 ? '#16A34A' : pct >= 50 ? '#D97706' : '#DC2626'}">${pct}%</span></td></tr>`;
+  }).join('');
+  const relCard = trCard('Forecast reliability', 'of ARR first-projected for a month, how much is now live',
+    trTable([{ t: 'Projected for' }, { t: 'ARR', r: 1 }, { t: 'Now live', r: 1 }, { t: 'Hit %', r: 1 }], relBody, 'Builds as accounts are tracked across months.'));
+
+  // ── 6) In-OB aging ──
+  const inOb = A.filter(r => !isLiveStage(r.current_stage) && !isDropStage(r.current_stage))
+    .map(r => ({ ...r, age: trDelta(r.first_seen, last) || 0 })).sort((a, b) => b.age - a.age);
+  const ageBody = inOb.slice(0, 15).map(r => `<tr>
+      <td class="tr-acct">${escHtml(r.account || r.row_key)} ${trProdBadge(r.source)}</td>
+      <td>${escHtml(r.current_sub_stage || r.current_stage || '—')}</td>
+      <td class="tr-r">${r.age}d</td><td class="tr-r">${money(+r.current_arr || 0)}</td></tr>`).join('');
+  const ageCard = trCard('In-OB aging', `${inOb.length} accounts in OB · days since first tracked`,
+    trTable([{ t: 'Account' }, { t: 'Sub-stage' }, { t: 'Age', r: 1 }, { t: 'ARR', r: 1 }], ageBody, 'No in-OB accounts.'));
+
+  // ── 7) ARR drift (while in OB) ──
+  const drift = A.filter(r => r.first_arr != null && r.current_arr != null && +r.first_arr !== +r.current_arr && !isDropStage(r.current_stage))
+    .map(r => ({ ...r, d: (+r.current_arr) - (+r.first_arr) })).sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
+  const driftBody = drift.slice(0, 12).map(r => `<tr>
+      <td class="tr-acct">${escHtml(r.account || r.row_key)} ${trProdBadge(r.source)}</td>
+      <td class="tr-r">${money(+r.first_arr)}</td><td class="tr-r">${money(+r.current_arr)}</td>
+      <td class="tr-r"><span style="color:${r.d > 0 ? '#16A34A' : '#DC2626'};font-weight:700">${r.d > 0 ? '+' : ''}${money(r.d)}</span></td></tr>`).join('');
+  const driftCard = trCard('ARR drift (in OB)', drift.length ? `${drift.length} accounts changed ARR` : 'No ARR changes yet',
+    trTable([{ t: 'Account' }, { t: 'First', r: 1 }, { t: 'Current', r: 1 }, { t: 'Δ', r: 1 }], driftBody, 'ARR steady across the funnel.'));
+
+  // ── 8) Blocked-owner churn ──
+  const ownerChurn = A.filter(r => r.blocked_owner_variants > 1 && !isLiveStage(r.current_stage))
+    .sort((a, b) => (+b.current_arr) - (+a.current_arr));
+  const ocBody = ownerChurn.slice(0, 12).map(r => `<tr>
+      <td class="tr-acct">${escHtml(r.account || r.row_key)} ${trProdBadge(r.source)}</td>
+      <td>${escHtml(r.first_blocked_owner || '—')} → ${escHtml(r.current_blocked_owner || '—')}</td>
+      <td class="tr-r">${r.blocked_owner_variants}×</td><td class="tr-r">${money(+r.current_arr || 0)}</td></tr>`).join('');
+  const ocCard = trCard('Blocked-owner churn', ownerChurn.length ? `${ownerChurn.length} accounts changed owner` : 'No owner reshuffles yet',
+    trTable([{ t: 'Account' }, { t: 'First → Current owner' }, { t: 'Moves', r: 1 }, { t: 'ARR', r: 1 }], ocBody, 'Blocked owners stable.'));
+
+  // ── 9) Confirmation flips ──
+  const flips = A.filter(r => r.first_conf && r.current_conf && r.first_conf !== r.current_conf && !isDropStage(r.current_stage))
+    .sort((a, b) => (+b.current_arr) - (+a.current_arr));
+  const flipBody = flips.slice(0, 12).map(r => `<tr>
+      <td class="tr-acct">${escHtml(r.account || r.row_key)} ${trProdBadge(r.source)}</td>
+      <td>${escHtml(r.first_conf || '(blank)')} → ${escHtml(r.current_conf || '(blank)')}</td>
+      <td class="tr-r">${money(+r.current_arr || 0)}</td></tr>`).join('');
+  const flipCard = trCard('Confirmation flips', flips.length ? `${flips.length} accounts` : 'No confirmation flips yet',
+    trTable([{ t: 'Account' }, { t: 'First → Current' }, { t: 'ARR', r: 1 }], flipBody, 'Confirmation status steady.'));
+
+  // ── 10) Drop cohort ──
+  const drops = A.filter(r => isDropStage(r.current_stage)).sort((a, b) => (b.current_drop_date || '').localeCompare(a.current_drop_date || ''));
+  const dropBody = drops.slice(0, 15).map(r => `<tr>
+      <td class="tr-acct">${escHtml(r.account || r.row_key)} ${trProdBadge(r.source)}</td>
+      <td>${escHtml(r.first_stage || '—')}</td><td>${escHtml(r.current_blocked_owner || '—')}</td>
+      <td>${trFmtD(r.current_drop_date)}</td><td class="tr-r">${money(+r.current_arr || 0)}</td></tr>`).join('');
+  const dropCard = trCard('Drop cohort', drops.length ? `${drops.length} dropped (tracked)` : 'No drops tracked yet',
+    trTable([{ t: 'Account' }, { t: 'First stage' }, { t: 'Last blocked owner' }, { t: 'Dropped' }, { t: 'ARR', r: 1 }], dropBody, 'No tracked drops.'));
+
+  el.innerHTML = `<div class="prog-hd"><h2 class="prog-title">Trends</h2><span class="prog-sub">Historical change-tracking · ${A.length} accounts · ${nDays} ${nDays === 1 ? 'day' : 'days'} of history (${trFmtD(first)} → ${trFmtD(last)})</span></div>
+    ${coverageBanner}
+    ${flowCard}
+    <div class="tr-grid">${projCard}${glCard}${lcCard}${relCard}${ageCard}${driftCard}${ocCard}${flipCard}${dropCard}</div>`;
+
+  // draw the flow chart
+  if (D.length >= 2 && typeof Chart !== 'undefined') {
+    const cv = document.getElementById('trends-flow-chart');
+    if (cv) {
+      if (trendsChart) { try { trendsChart.destroy(); } catch (e) {} }
+      trendsChart = new Chart(cv.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: D.map(d => trFmtD(d.snapshot_date)),
+          datasets: [
+            { label: 'In OB', data: D.map(d => +d.in_ob_arr || 0), borderColor: '#2563EB', backgroundColor: 'rgba(37,99,235,.08)', fill: true, tension: .3, pointRadius: 2 },
+            { label: 'Confirmed', data: D.map(d => +d.confirmed_arr || 0), borderColor: '#16A34A', backgroundColor: 'rgba(22,163,74,.06)', fill: true, tension: .3, pointRadius: 2 },
+            { label: 'Dropped', data: D.map(d => +d.dropped_arr || 0), borderColor: '#DC2626', fill: false, tension: .3, pointRadius: 2 }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+            tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmt$(c.parsed.y) } } },
+          scales: { y: { ticks: { callback: v => fmt$(v) } } } }
+      });
+    }
+  }
 }
 
 // ─── SLACK VIEW (compact mobile scorecard) ───────────────────
@@ -3554,7 +3801,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // #email / #display / #slack land on the Views tab with the right sub-tab selected.
   const tab = (location.hash || '').replace('#', '');
   if (['email','display','slack'].includes(tab)) { switchTab('views'); switchView(tab); }
-  else if (['overview','studio','vini','programs','analytics','views'].includes(tab)) switchTab(tab);
+  else if (['overview','studio','vini','programs','analytics','views','trends'].includes(tab)) switchTab(tab);
   loadAllData();
   // Auto-refresh every 4 hours
   setInterval(loadAllData, 4 * 60 * 60 * 1000);
