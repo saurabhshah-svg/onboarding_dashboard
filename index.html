@@ -242,6 +242,7 @@ tr:hover td { background:#F8FAFC; }
 .ub-tbl tr.ub-unmapped td { background:#FBFAF7; color:var(--muted); }
 .ub-tbl tr.ub-unmapped .ub-reason { font-weight:500; font-style:italic; }
 .ub-noproblem { font-style:normal; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.02em; color:#B45309; background:#FEF3C7; padding:1px 6px; border-radius:8px; margin-right:6px; }
+.ub-cs-tag { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.02em; color:#0369A1; background:#E0F2FE; padding:1px 6px; border-radius:8px; margin-right:6px; }
 .ub-tbl tr.ub-divider td { background:#F1F5F9; color:var(--muted); font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; text-align:center; padding:5px; }
 .ub-prod-hd { font-size:13px; font-weight:700; color:var(--text); margin:14px 0 6px; }
 .ub-prod-name { font-weight:800; }
@@ -1314,7 +1315,8 @@ async function fetchPartnership() {
 
 // Program 1 — Sales → OB Funnel Backfill. Public "Saurabh" tab (fetched directly via gviz).
 // Columns: A account · B manager · C total-ARR · D product · E PWS Type(New/Old/In Pipeline) ·
-//          F date · G program-ARR(sums to the "Sent to OB" total) · H Current Status · I AE · J Owner.
+//          F date · G program-ARR(sums to the "Sent to OB" total) · H Current Status · I AE ·
+//          J Owner · K Ent Id (match to OB) · L CS Blocked Problem.
 const PROG1_CSV_URL = 'https://docs.google.com/spreadsheets/d/1o1s_iRGCu4MXANfAKOJwAXTBHzLJFzXHg1evxpLeGl8/gviz/tq?tqx=out:csv&sheet=Saurabh';
 const PROG1_ALREADY_SENT = 275349;   // ARR already moved into OB from this Sales backfill — hardcoded, MONTHLY UPKEEP
 let PROG1_ROWS = [];
@@ -1342,6 +1344,8 @@ function parseProg1(rows) {
         owner,
         currentMonthConf: /confirm/i.test(status) ? 'Confirmed' : (blocked ? 'Blocked' : ''),
         blockedReason: blocked ? owner : '',
+        entId: (r[10] || '').trim(),                 // col K — match to the OB sheet
+        csProblem: (r[11] || '').trim(),             // col L — problem text for CS-Blocked (no entId)
         projectionDate: parseDate(r[5])
       };
     });
@@ -1965,13 +1969,33 @@ function saveProg2(el) {
       .catch(() => show('✓ Saved on this device', 2000));
   }, 600);
 }
+// Program bucket = Product / Tech / Integration Tech (the owner programs).
+const PROG_BUCKETS = ['product', 'tech', 'integration tech'];
 function unblockProgramHtml(programNo, ownerLabel, matchLower, accent) {
-  const ownerMatch = r => (r.blockedReason || '').trim().toLowerCase() === matchLower;
-  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const obRows  = allRows.filter(r => isInFunnel(r) && isBlockedConf(r) && ownerMatch(r));    // already in OB, blocked
-  const pwsRows = (PROG1_ROWS || []).filter(r => isBlockedConf(r) && ownerMatch(r));           // PWS pipeline (expected → OB), blocked
+  const norm = s => String(s || '').trim().toLowerCase();   // Ent Id / owner normalizer
   const sum = a => a.reduce((s, r) => s + r.arr, 0);
-  const obArr = sum(obRows), pwsArr = sum(pwsRows);
+
+  // OB blocked rows. Each account (Ent Id) is assigned to ONE program bucket = the program bucket
+  // where it has the most OB ARR (from the OB sheet). This is authoritative — Velocity col J is ignored.
+  const obBlocked = allRows.filter(r => isInFunnel(r) && isBlockedConf(r));
+  const entAcc = {};
+  obBlocked.forEach(r => { const e = norm(r.entId), o = norm(r.blockedReason); if (!e || !PROG_BUCKETS.includes(o)) return; (entAcc[e] = entAcc[e] || {})[o] = (entAcc[e][o] || 0) + r.arr; });
+  const entBucket = {};   // Ent Id -> its program bucket
+  Object.keys(entAcc).forEach(e => { entBucket[e] = Object.entries(entAcc[e]).sort((a, b) => b[1] - a[1])[0][0]; });
+
+  // Velocity (PWS) blocked rows → matched to OB by Ent Id (goes to OB's bucket); else CS / other.
+  const pwsBlocked = (PROG1_ROWS || []).filter(r => isBlockedConf(r));
+  const pwsArrByEnt = {};   // Ent Id -> matched PWS ARR
+  const pwsUnmatched = [];  // no Ent-Id match → categorized by col J owner
+  pwsBlocked.forEach(r => { const e = norm(r.entId); if (e && entBucket[e]) pwsArrByEnt[e] = (pwsArrByEnt[e] || 0) + r.arr; else pwsUnmatched.push(r); });
+
+  // slices for THIS program
+  const obX    = obBlocked.filter(r => norm(r.blockedReason) === matchLower);
+  const csX    = pwsUnmatched.filter(r => /cs.?blocked/i.test(r.status) && norm(r.owner) === matchLower);   // CS Blocked, no Ent Id → col J bucket, col L problem
+  const otherX = pwsUnmatched.filter(r => !/cs.?blocked/i.test(r.status) && norm(r.owner) === matchLower);  // no match, no problem
+  const matchedPwsX = Object.keys(pwsArrByEnt).filter(e => entBucket[e] === matchLower).reduce((s, e) => s + pwsArrByEnt[e], 0);
+  const obArr = sum(obX), pwsArr = matchedPwsX + sum(csX) + sum(otherX);
+
   const products = [
     { key: 'Vini',   unit: 'agents',   col: '#0891B2', filt: r => r.source === 'vini' },
     { key: 'Studio', unit: 'rooftops', col: '#2563EB', filt: r => r.source !== 'vini' }
@@ -1980,50 +2004,56 @@ function unblockProgramHtml(programNo, ownerLabel, matchLower, accent) {
     return `<td><input class="ub-input" type="text" placeholder="Owner…" value="${escAttr(sv.owner)}" data-k="${k}" data-f="owner" oninput="saveProg2(this)"></td>
             <td><input class="ub-input" type="text" placeholder="ETA…" value="${escAttr(sv.eta)}" data-k="${k}" data-f="eta" oninput="saveProg2(this)"></td>`; };
   const arrCell = v => v ? fmt$(v) : '<span style="color:var(--faint)">—</span>';
+  const consumed = new Set();   // Ent Ids whose matched PWS ARR is already placed (once per program)
 
-  // One table per product: OB problems (grouped by blocked reason) with each account's PWS ARR
-  // joined on by name. Accounts with no identified problem (no-reason OB + PWS-only) shown muted.
   const tableFor = prod => {
-    const obP = obRows.filter(prod.filt), pwsP = pwsRows.filter(prod.filt);
-    if (!obP.length && !pwsP.length) return '';
-    const pwsByAcct = {};   // normName -> { arr, name }
-    pwsP.forEach(r => { const n = norm(r.entityName); (pwsByAcct[n] = pwsByAcct[n] || { arr: 0, name: r.entityName || r.rooftopName || '—' }).arr += r.arr; });
-    const consumed = new Set();
+    const obP = obX.filter(prod.filt), csP = csX.filter(prod.filt), otherP = otherX.filter(prod.filt);
+    if (!obP.length && !csP.length && !otherP.length) return '';
     const byProblem = {};
     obP.forEach(r => { const p = (cleanTxt(r.blockedRemarks) || '(no reason specified)').trim(); (byProblem[p] = byProblem[p] || []).push(r); });
-    const rowFor = (p, rws, muted) => {
-      const oA = rws.reduce((s, r) => s + r.arr, 0);
+
+    // OB problem rows (problem-first) with each account's PWS ARR joined by Ent Id
+    const obRowHtml = (p, rws, muted) => {
       const accts = [...new Set(rws.map(r => r.entityName || r.rooftopName || '—'))];
-      let pA = 0;
-      accts.forEach(a => { const n = norm(a); if (pwsByAcct[n] && !consumed.has(n)) { pA += pwsByAcct[n].arr; consumed.add(n); } });
+      const ents = [...new Set(rws.map(r => norm(r.entId)).filter(Boolean))];
+      let pA = 0; ents.forEach(e => { if (entBucket[e] === matchLower && !consumed.has(e)) { pA += (pwsArrByEnt[e] || 0); consumed.add(e); } });
       const k = encodeURIComponent(matchLower + '|' + prod.key + '|' + p);
-      return `<tr${muted ? ' class="ub-unmapped"' : ''}>
-        <td class="ub-reason">${muted ? '<span class="ub-noproblem">no problem identified</span> ' : ''}${escHtml(p)}<div class="ub-accts">${escHtml(accts.slice(0, 4).join(', '))}${accts.length > 4 ? ' +' + (accts.length - 4) : ''} · ${rws.length} ${rws.length === 1 ? prod.unit.slice(0, -1) : prod.unit}</div></td>
-        <td class="ub-arr">${arrCell(oA)}</td><td class="ub-arr ub-pws">${arrCell(pA)}</td>${inputCells(k)}</tr>`;
+      return `<tr${muted ? ' class="ub-unmapped"' : ''}><td class="ub-reason">${muted ? '<span class="ub-noproblem">no problem identified</span> ' : ''}${escHtml(muted ? accts.slice(0, 4).join(', ') : p)}<div class="ub-accts">${muted ? 'in OB · reason not set' : escHtml(accts.slice(0, 4).join(', ')) + (accts.length > 4 ? ' +' + (accts.length - 4) : '')} · ${rws.length} ${rws.length === 1 ? prod.unit.slice(0, -1) : prod.unit}</div></td>
+        <td class="ub-arr">${arrCell(sum(rws))}</td><td class="ub-arr ub-pws">${arrCell(pA)}</td>${inputCells(k)}</tr>`;
     };
-    // real problems first (claim their PWS accounts), sorted by combined ARR
     const realRows = Object.keys(byProblem).filter(p => p !== '(no reason specified)')
-      .map(p => ({ p, rws: byProblem[p], tot: byProblem[p].reduce((s, r) => s + r.arr, 0) }))
-      .sort((a, b) => b.tot - a.tot).map(x => rowFor(x.p, x.rws, false)).join('');
-    // unmapped: no-reason OB bucket, then PWS-only accounts (not matched to any problem)
+      .map(p => ({ p, rws: byProblem[p], tot: sum(byProblem[p]) })).sort((a, b) => b.tot - a.tot)
+      .map(x => obRowHtml(x.p, x.rws, false)).join('');
+
+    // CS Blocked (no Ent Id): OB blank, problem from col L, bucket from col J
+    const csByProblem = {};
+    csP.forEach(r => { const p = (cleanTxt(r.csProblem) || 'CS Blocked — problem TBD').trim(); (csByProblem[p] = csByProblem[p] || []).push(r); });
+    const csRows = Object.keys(csByProblem).sort((a, b) => sum(csByProblem[b]) - sum(csByProblem[a])).map(p => {
+      const rws = csByProblem[p], accts = [...new Set(rws.map(r => r.entityName || '—'))];
+      const k = encodeURIComponent(matchLower + '|CS|' + prod.key + '|' + p);
+      return `<tr><td class="ub-reason"><span class="ub-cs-tag">CS blocked</span> ${escHtml(p)}<div class="ub-accts">${escHtml(accts.slice(0, 4).join(', '))}${accts.length > 4 ? ' +' + (accts.length - 4) : ''} · PWS pipeline</div></td>
+        <td class="ub-arr">${arrCell(0)}</td><td class="ub-arr ub-pws">${arrCell(sum(rws))}</td>${inputCells(k)}</tr>`;
+    }).join('');
+
+    // Unmapped (muted): no-reason OB bucket + PWS with no Ent-Id match & no problem
     let unmapped = '';
-    if (byProblem['(no reason specified)']) unmapped += rowFor('(no reason specified)', byProblem['(no reason specified)'], true);
-    Object.keys(pwsByAcct).filter(n => !consumed.has(n)).sort((a, b) => pwsByAcct[b].arr - pwsByAcct[a].arr).forEach(n => {
-      const e = pwsByAcct[n], k = encodeURIComponent(matchLower + '|PWS|' + prod.key + '|' + e.name);
-      unmapped += `<tr class="ub-unmapped"><td class="ub-reason"><span class="ub-noproblem">no problem identified</span> ${escHtml(e.name)}<div class="ub-accts">PWS pipeline · not yet in OB</div></td>
-        <td class="ub-arr">${arrCell(0)}</td><td class="ub-arr ub-pws">${arrCell(e.arr)}</td>${inputCells(k)}</tr>`;
+    if (byProblem['(no reason specified)']) unmapped += obRowHtml('(no reason specified)', byProblem['(no reason specified)'], true);
+    otherP.slice().sort((a, b) => b.arr - a.arr).forEach(r => {
+      const acct = r.entityName || '—', k = encodeURIComponent(matchLower + '|PWS|' + prod.key + '|' + acct);
+      unmapped += `<tr class="ub-unmapped"><td class="ub-reason"><span class="ub-noproblem">no problem identified</span> ${escHtml(acct)}<div class="ub-accts">PWS pipeline · not yet in OB</div></td>
+        <td class="ub-arr">${arrCell(0)}</td><td class="ub-arr ub-pws">${arrCell(r.arr)}</td>${inputCells(k)}</tr>`;
     });
-    const dividerRow = unmapped ? `<tr class="ub-divider"><td colspan="5">— Not mapped to a problem —</td></tr>` : '';
-    return `<div class="ub-prod-hd"><span class="ub-prod-name" style="color:${prod.col}">${prod.key}</span> · OB ${fmt$(sum(obP))} · PWS ${fmt$(sum(pwsP))} · ${obP.length + pwsP.length} ${prod.unit}</div>
-      <div class="ub-tbl-wrap"><table class="ub-tbl"><thead><tr><th>Blocked Reason (problem)</th><th style="text-align:right">OB ARR</th><th style="text-align:right">PWS ARR</th><th style="width:150px">Owner Name</th><th style="width:120px">ETA</th></tr></thead><tbody>${realRows}${dividerRow}${unmapped}</tbody></table></div>`;
+    const divider = unmapped ? `<tr class="ub-divider"><td colspan="5">— Not mapped to a problem —</td></tr>` : '';
+    return `<div class="ub-prod-hd"><span class="ub-prod-name" style="color:${prod.col}">${prod.key}</span> · OB ${fmt$(sum(obP))}</div>
+      <div class="ub-tbl-wrap"><table class="ub-tbl"><thead><tr><th>Blocked Reason (problem)</th><th style="text-align:right">OB ARR</th><th style="text-align:right">PWS ARR</th><th style="width:150px">Owner Name</th><th style="width:120px">ETA</th></tr></thead><tbody>${realRows}${csRows}${divider}${unmapped}</tbody></table></div>`;
   };
 
-  const inner = (obRows.length || pwsRows.length) ? products.map(tableFor).join('') : `<div class="empty-state">No ${escHtml(ownerLabel)}-blocked accounts right now. 🎉</div>`;
-  return `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program ${programNo} — ${escHtml(ownerLabel)} Unblocking</h2><span class="prog-sub">Problem-first · ARR blocked on ${escHtml(ownerLabel)} — OB + PWS (matched by account) · Owner &amp; ETA entered on the dashboard, shared with everyone</span></div>
+  const inner = (obX.length || csX.length || otherX.length) ? products.map(tableFor).join('') : `<div class="empty-state">No ${escHtml(ownerLabel)}-blocked accounts right now. 🎉</div>`;
+  return `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program ${programNo} — ${escHtml(ownerLabel)} Unblocking</h2><span class="prog-sub">Problem-first · blocked on ${escHtml(ownerLabel)} — OB + PWS matched by Ent Id (bucket from OB) · Owner &amp; ETA shared with everyone</span></div>
     <div class="ub-total" style="border-left-color:${accent}">
       <span class="ub-total-label">ARR Stuck on ${escHtml(ownerLabel)}</span>
-      <span class="ub-stat"><b class="ub-stat-v">${fmt$(obArr)}</b> OB · ${obRows.length}</span>
-      <span class="ub-stat"><b class="ub-stat-v">${fmt$(pwsArr)}</b> PWS · ${pwsRows.length}</span>
+      <span class="ub-stat"><b class="ub-stat-v">${fmt$(obArr)}</b> OB · ${obX.length}</span>
+      <span class="ub-stat"><b class="ub-stat-v">${fmt$(pwsArr)}</b> PWS</span>
       <span class="ub-stat"><b class="ub-stat-v">${fmt$(obArr + pwsArr)}</b> total</span>
     </div>
     ${inner}`;
