@@ -238,6 +238,11 @@ tr:hover td { background:#F8FAFC; }
 .ub-section-hd { font-size:13.5px; font-weight:800; color:var(--text); margin:18px 0 8px; }
 .ub-section-sub { font-size:11.5px; font-weight:500; color:var(--muted); margin-left:8px; }
 .ub-empty-inline { padding:12px 4px; color:var(--muted); font-size:12.5px; }
+.ub-pws { color:#DB2777; }
+.ub-tbl tr.ub-unmapped td { background:#FBFAF7; color:var(--muted); }
+.ub-tbl tr.ub-unmapped .ub-reason { font-weight:500; font-style:italic; }
+.ub-noproblem { font-style:normal; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.02em; color:#B45309; background:#FEF3C7; padding:1px 6px; border-radius:8px; margin-right:6px; }
+.ub-tbl tr.ub-divider td { background:#F1F5F9; color:var(--muted); font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; text-align:center; padding:5px; }
 .ub-prod-hd { font-size:13px; font-weight:700; color:var(--text); margin:14px 0 6px; }
 .ub-prod-name { font-weight:800; }
 .ub-tbl-wrap { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:8px; }
@@ -1962,8 +1967,9 @@ function saveProg2(el) {
 }
 function unblockProgramHtml(programNo, ownerLabel, matchLower, accent) {
   const ownerMatch = r => (r.blockedReason || '').trim().toLowerCase() === matchLower;
-  const obRows  = allRows.filter(r => isInFunnel(r) && isBlockedConf(r) && ownerMatch(r));                 // already in OB, blocked
-  const pwsRows = (PROG1_ROWS || []).filter(r => isBlockedConf(r) && ownerMatch(r));                        // PWS pipeline (expected → OB), blocked
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const obRows  = allRows.filter(r => isInFunnel(r) && isBlockedConf(r) && ownerMatch(r));    // already in OB, blocked
+  const pwsRows = (PROG1_ROWS || []).filter(r => isBlockedConf(r) && ownerMatch(r));           // PWS pipeline (expected → OB), blocked
   const sum = a => a.reduce((s, r) => s + r.arr, 0);
   const obArr = sum(obRows), pwsArr = sum(pwsRows);
   const products = [
@@ -1973,51 +1979,54 @@ function unblockProgramHtml(programNo, ownerLabel, matchLower, accent) {
   const inputCells = k => { const sv = PROG2_INPUTS[k] || { owner: '', eta: '' };
     return `<td><input class="ub-input" type="text" placeholder="Owner…" value="${escAttr(sv.owner)}" data-k="${k}" data-f="owner" oninput="saveProg2(this)"></td>
             <td><input class="ub-input" type="text" placeholder="ETA…" value="${escAttr(sv.eta)}" data-k="${k}" data-f="eta" oninput="saveProg2(this)"></td>`; };
+  const arrCell = v => v ? fmt$(v) : '<span style="color:var(--faint)">—</span>';
 
-  // In-OB: problem-first (grouped by blocked reason)
-  const obTableFor = prod => {
-    const prows = obRows.filter(prod.filt);
-    if (!prows.length) return '';
+  // One table per product: OB problems (grouped by blocked reason) with each account's PWS ARR
+  // joined on by name. Accounts with no identified problem (no-reason OB + PWS-only) shown muted.
+  const tableFor = prod => {
+    const obP = obRows.filter(prod.filt), pwsP = pwsRows.filter(prod.filt);
+    if (!obP.length && !pwsP.length) return '';
+    const pwsByAcct = {};   // normName -> { arr, name }
+    pwsP.forEach(r => { const n = norm(r.entityName); (pwsByAcct[n] = pwsByAcct[n] || { arr: 0, name: r.entityName || r.rooftopName || '—' }).arr += r.arr; });
+    const consumed = new Set();
     const byProblem = {};
-    prows.forEach(r => { const p = (cleanTxt(r.blockedRemarks) || '(no reason specified)').trim(); (byProblem[p] = byProblem[p] || []).push(r); });
-    const probs = Object.keys(byProblem).sort((a, b) => byProblem[b].reduce((s, r) => s + r.arr, 0) - byProblem[a].reduce((s, r) => s + r.arr, 0));
-    const body = probs.map(p => {
-      const rws = byProblem[p], arr = rws.reduce((s, r) => s + r.arr, 0);
+    obP.forEach(r => { const p = (cleanTxt(r.blockedRemarks) || '(no reason specified)').trim(); (byProblem[p] = byProblem[p] || []).push(r); });
+    const rowFor = (p, rws, muted) => {
+      const oA = rws.reduce((s, r) => s + r.arr, 0);
       const accts = [...new Set(rws.map(r => r.entityName || r.rooftopName || '—'))];
-      const k = encodeURIComponent(matchLower + '|OB|' + prod.key + '|' + p);
-      return `<tr><td class="ub-reason">${escHtml(p)}<div class="ub-accts">${escHtml(accts.slice(0, 4).join(', '))}${accts.length > 4 ? ' +' + (accts.length - 4) : ''} · ${rws.length} ${rws.length === 1 ? prod.unit.slice(0, -1) : prod.unit}</div></td>
-        <td class="ub-arr">${fmt$(arr)}</td>${inputCells(k)}</tr>`;
-    }).join('');
-    return `<div class="ub-prod-hd"><span class="ub-prod-name" style="color:${prod.col}">${prod.key}</span> · ${fmt$(sum(prows))} · ${prows.length} ${prows.length === 1 ? prod.unit.slice(0, -1) : prod.unit} · ${probs.length} ${probs.length === 1 ? 'problem' : 'problems'}</div>
-      <div class="ub-tbl-wrap"><table class="ub-tbl"><thead><tr><th>Blocked Reason (problem)</th><th style="text-align:right">ARR Stuck</th><th style="width:150px">Owner Name</th><th style="width:120px">ETA</th></tr></thead><tbody>${body}</tbody></table></div>`;
-  };
-  // PWS pipeline: per-account (the sheet has no problem text) — shows PWS type + status
-  const pwsTableFor = prod => {
-    const prows = pwsRows.filter(prod.filt).slice().sort((a, b) => b.arr - a.arr);
-    if (!prows.length) return '';
-    const body = prows.map(r => {
-      const acct = r.entityName || r.rooftopName || '—';
-      const k = encodeURIComponent(matchLower + '|PWS|' + prod.key + '|' + acct);
-      return `<tr><td class="ub-reason">${escHtml(acct)}<div class="ub-accts">PWS: ${escHtml(r.pwsType || '—')}${r.status ? ' · ' + escHtml(r.status) : ''}</div></td>
-        <td class="ub-arr">${fmt$(r.arr)}</td>${inputCells(k)}</tr>`;
-    }).join('');
-    return `<div class="ub-prod-hd"><span class="ub-prod-name" style="color:${prod.col}">${prod.key}</span> · ${fmt$(sum(prows))} · ${prows.length} ${prows.length === 1 ? prod.unit.slice(0, -1) : prod.unit}</div>
-      <div class="ub-tbl-wrap"><table class="ub-tbl"><thead><tr><th>Account (PWS pipeline)</th><th style="text-align:right">ARR Stuck</th><th style="width:150px">Owner Name</th><th style="width:120px">ETA</th></tr></thead><tbody>${body}</tbody></table></div>`;
+      let pA = 0;
+      accts.forEach(a => { const n = norm(a); if (pwsByAcct[n] && !consumed.has(n)) { pA += pwsByAcct[n].arr; consumed.add(n); } });
+      const k = encodeURIComponent(matchLower + '|' + prod.key + '|' + p);
+      return `<tr${muted ? ' class="ub-unmapped"' : ''}>
+        <td class="ub-reason">${muted ? '<span class="ub-noproblem">no problem identified</span> ' : ''}${escHtml(p)}<div class="ub-accts">${escHtml(accts.slice(0, 4).join(', '))}${accts.length > 4 ? ' +' + (accts.length - 4) : ''} · ${rws.length} ${rws.length === 1 ? prod.unit.slice(0, -1) : prod.unit}</div></td>
+        <td class="ub-arr">${arrCell(oA)}</td><td class="ub-arr ub-pws">${arrCell(pA)}</td>${inputCells(k)}</tr>`;
+    };
+    // real problems first (claim their PWS accounts), sorted by combined ARR
+    const realRows = Object.keys(byProblem).filter(p => p !== '(no reason specified)')
+      .map(p => ({ p, rws: byProblem[p], tot: byProblem[p].reduce((s, r) => s + r.arr, 0) }))
+      .sort((a, b) => b.tot - a.tot).map(x => rowFor(x.p, x.rws, false)).join('');
+    // unmapped: no-reason OB bucket, then PWS-only accounts (not matched to any problem)
+    let unmapped = '';
+    if (byProblem['(no reason specified)']) unmapped += rowFor('(no reason specified)', byProblem['(no reason specified)'], true);
+    Object.keys(pwsByAcct).filter(n => !consumed.has(n)).sort((a, b) => pwsByAcct[b].arr - pwsByAcct[a].arr).forEach(n => {
+      const e = pwsByAcct[n], k = encodeURIComponent(matchLower + '|PWS|' + prod.key + '|' + e.name);
+      unmapped += `<tr class="ub-unmapped"><td class="ub-reason"><span class="ub-noproblem">no problem identified</span> ${escHtml(e.name)}<div class="ub-accts">PWS pipeline · not yet in OB</div></td>
+        <td class="ub-arr">${arrCell(0)}</td><td class="ub-arr ub-pws">${arrCell(e.arr)}</td>${inputCells(k)}</tr>`;
+    });
+    const dividerRow = unmapped ? `<tr class="ub-divider"><td colspan="5">— Not mapped to a problem —</td></tr>` : '';
+    return `<div class="ub-prod-hd"><span class="ub-prod-name" style="color:${prod.col}">${prod.key}</span> · OB ${fmt$(sum(obP))} · PWS ${fmt$(sum(pwsP))} · ${obP.length + pwsP.length} ${prod.unit}</div>
+      <div class="ub-tbl-wrap"><table class="ub-tbl"><thead><tr><th>Blocked Reason (problem)</th><th style="text-align:right">OB ARR</th><th style="text-align:right">PWS ARR</th><th style="width:150px">Owner Name</th><th style="width:120px">ETA</th></tr></thead><tbody>${realRows}${dividerRow}${unmapped}</tbody></table></div>`;
   };
 
-  const obInner  = obRows.length  ? products.map(obTableFor).join('')  : `<div class="ub-empty-inline">No ${escHtml(ownerLabel)}-blocked accounts in OB. 🎉</div>`;
-  const pwsInner = pwsRows.length ? products.map(pwsTableFor).join('') : `<div class="ub-empty-inline">No ${escHtml(ownerLabel)}-blocked accounts in the PWS pipeline.</div>`;
-
-  return `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program ${programNo} — ${escHtml(ownerLabel)} Unblocking</h2><span class="prog-sub">ARR blocked on ${escHtml(ownerLabel)} — in OB + PWS pipeline · Owner &amp; ETA entered on the dashboard, shared with everyone</span></div>
+  const inner = (obRows.length || pwsRows.length) ? products.map(tableFor).join('') : `<div class="empty-state">No ${escHtml(ownerLabel)}-blocked accounts right now. 🎉</div>`;
+  return `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program ${programNo} — ${escHtml(ownerLabel)} Unblocking</h2><span class="prog-sub">Problem-first · ARR blocked on ${escHtml(ownerLabel)} — OB + PWS (matched by account) · Owner &amp; ETA entered on the dashboard, shared with everyone</span></div>
     <div class="ub-total" style="border-left-color:${accent}">
       <span class="ub-total-label">ARR Stuck on ${escHtml(ownerLabel)}</span>
-      <span class="ub-stat"><b class="ub-stat-v">${fmt$(obArr)}</b> In OB · ${obRows.length}</span>
-      <span class="ub-stat"><b class="ub-stat-v">${fmt$(pwsArr)}</b> PWS pipeline · ${pwsRows.length}</span>
+      <span class="ub-stat"><b class="ub-stat-v">${fmt$(obArr)}</b> OB · ${obRows.length}</span>
+      <span class="ub-stat"><b class="ub-stat-v">${fmt$(pwsArr)}</b> PWS · ${pwsRows.length}</span>
+      <span class="ub-stat"><b class="ub-stat-v">${fmt$(obArr + pwsArr)}</b> total</span>
     </div>
-    <div class="ub-section-hd">🔧 In OB — blocked <span class="ub-section-sub">problem-first</span></div>
-    ${obInner}
-    <div class="ub-section-hd">📥 PWS pipeline — blocked <span class="ub-section-sub">expected to move into OB (from Program 1)</span></div>
-    ${pwsInner}`;
+    ${inner}`;
 }
 
 // ═══ TRENDS — historical change-tracking from Supabase ══════════════════════
