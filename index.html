@@ -228,6 +228,23 @@ tr:hover td { background:#F8FAFC; }
 .p1-stat-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
 .p1-stat-val { font-size:22px; font-weight:800; color:var(--text); margin-top:2px; }
 .p1-stat-sub { font-size:11.5px; color:var(--muted); margin-top:1px; }
+/* Program 2/3/4 — Unblocking problem-first tables */
+.ub-total { display:inline-block; background:#fff; border:1px solid var(--border); border-left:4px solid #7C3AED; border-radius:8px; padding:9px 16px; margin-bottom:14px; }
+.ub-total-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+.ub-total-val { font-size:20px; font-weight:800; color:var(--text); }
+.ub-total-sub { font-size:11.5px; color:var(--muted); margin-left:8px; }
+.ub-prod-hd { font-size:13px; font-weight:700; color:var(--text); margin:14px 0 6px; }
+.ub-prod-name { font-weight:800; }
+.ub-tbl-wrap { border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:8px; }
+.ub-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+.ub-tbl th { text-align:left; padding:8px 12px; font-size:10px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); background:#F8FAFC; border-bottom:2px solid var(--border); }
+.ub-tbl td { padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+.ub-tbl tr:last-child td { border-bottom:none; }
+.ub-reason { font-weight:600; max-width:440px; }
+.ub-accts { font-size:10.5px; color:var(--muted); font-weight:400; margin-top:2px; }
+.ub-arr { text-align:right; font-weight:700; white-space:nowrap; }
+.ub-input { width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:6px; padding:5px 8px; font-size:12px; font-family:inherit; background:#FFFDF5; }
+.ub-input:focus { outline:none; border-color:var(--blue); background:#fff; }
 .wf-panel { margin-top:28px; border-top:1px solid var(--border); padding-top:18px; }
 .wf-hd { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
 .wf-title { font-size:15px; font-weight:800; color:var(--text); margin:0; }
@@ -1651,7 +1668,10 @@ function renderPrograms(rows) {
     `<div class="prog-hd"><h2 class="prog-title">Program Summary</h2><span class="prog-sub">The month's OB funnel — where the ARR is, who owns the unblock</span></div>
      <div class="fn-wrap"><div class="fn-tree-panel" data-root="total">${fnRenderTree('total')}</div></div>
      ${fnWaterfallHtml()}
-     ${p1Html}`;
+     ${p1Html}
+     ${unblockProgramHtml(2, 'Product', 'product', '#7C3AED')}
+     ${unblockProgramHtml(3, 'Tech', 'tech', '#2563EB')}
+     ${unblockProgramHtml(4, 'Integration Tech', 'integration tech', '#0891B2')}`;
 }
 
 // A node's total ARR = its D2D rows + any scalar extra (e.g. reseller live on Went Live/Total).
@@ -1855,6 +1875,55 @@ function buildProg1(reg) {
   });
   reg('p1', { label:'Expected Movement to OB ARR', desc:'Sales pipeline expected to move into OB · not in OB yet', color:'#0F172A', rows, kind:'root', children:typeIds });
   return true;
+}
+
+// #Program 2/3/4 — Product / Tech / Integration-Tech Unblocking. Problem-first tables of in-OB
+// ARR blocked on that owner, grouped by Blocked Reason (blockedRemarks). Owner Name + ETA are
+// entered on the dashboard and persisted in localStorage (dashboard-only, this browser).
+function escHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function escAttr(s) { return escHtml(s).replace(/"/g, '&quot;'); }
+let PROG2_INPUTS = {};
+try { PROG2_INPUTS = JSON.parse(localStorage.getItem('ob_prog2_inputs') || '{}'); } catch (e) {}
+function saveProg2(el) {
+  const k = el.dataset.k, f = el.dataset.f;
+  PROG2_INPUTS[k] = PROG2_INPUTS[k] || { owner: '', eta: '' };
+  PROG2_INPUTS[k][f] = el.value;
+  try { localStorage.setItem('ob_prog2_inputs', JSON.stringify(PROG2_INPUTS)); } catch (e) {}
+}
+function unblockProgramHtml(programNo, ownerLabel, matchLower, accent) {
+  const rows = allRows.filter(r => isInFunnel(r) && isBlockedConf(r) && (r.blockedReason || '').trim().toLowerCase() === matchLower);
+  const totalArr = rows.reduce((s, r) => s + r.arr, 0);
+  const products = [
+    { key: 'Vini',   rows: rows.filter(r => r.source === 'vini'), unit: 'agents',   col: '#0891B2' },
+    { key: 'Studio', rows: rows.filter(r => r.source !== 'vini'), unit: 'rooftops', col: '#2563EB' }
+  ];
+  const tableFor = prod => {
+    if (!prod.rows.length) return '';
+    const byProblem = {};
+    prod.rows.forEach(r => { const p = (cleanTxt(r.blockedRemarks) || '(no reason specified)').trim(); (byProblem[p] = byProblem[p] || []).push(r); });
+    const probs = Object.keys(byProblem).sort((a, b) => byProblem[b].reduce((s, r) => s + r.arr, 0) - byProblem[a].reduce((s, r) => s + r.arr, 0));
+    const body = probs.map(p => {
+      const rws = byProblem[p], arr = rws.reduce((s, r) => s + r.arr, 0);
+      const accts = [...new Set(rws.map(r => r.entityName || r.rooftopName || '—'))];
+      const k = encodeURIComponent(matchLower + '|' + prod.key + '|' + p);
+      const sv = PROG2_INPUTS[k] || { owner: '', eta: '' };
+      return `<tr>
+        <td class="ub-reason">${escHtml(p)}<div class="ub-accts">${escHtml(accts.slice(0, 4).join(', '))}${accts.length > 4 ? ' +' + (accts.length - 4) : ''} · ${rws.length} ${rws.length === 1 ? prod.unit.slice(0, -1) : prod.unit}</div></td>
+        <td class="ub-arr">${fmt$(arr)}</td>
+        <td><input class="ub-input" type="text" placeholder="Owner…" value="${escAttr(sv.owner)}" data-k="${k}" data-f="owner" oninput="saveProg2(this)"></td>
+        <td><input class="ub-input" type="text" placeholder="ETA…" value="${escAttr(sv.eta)}" data-k="${k}" data-f="eta" oninput="saveProg2(this)"></td>
+      </tr>`;
+    }).join('');
+    const pArr = prod.rows.reduce((s, r) => s + r.arr, 0);
+    return `<div class="ub-prod-hd"><span class="ub-prod-name" style="color:${prod.col}">${prod.key}</span> · ${fmt$(pArr)} · ${prod.rows.length} ${prod.unit} · ${probs.length} ${probs.length === 1 ? 'problem' : 'problems'}</div>
+      <div class="ub-tbl-wrap"><table class="ub-tbl">
+        <thead><tr><th>Blocked Reason (problem)</th><th style="text-align:right">ARR Stuck</th><th style="width:150px">Owner Name</th><th style="width:120px">ETA</th></tr></thead>
+        <tbody>${body}</tbody></table></div>`;
+  };
+  const inner = rows.length ? products.map(tableFor).join('') : `<div class="empty-state">No ${escHtml(ownerLabel)}-blocked accounts in OB right now. 🎉</div>`;
+  return `<div class="prog-hd prog-hd-2"><h2 class="prog-title">Program ${programNo} — ${escHtml(ownerLabel)} Unblocking</h2><span class="prog-sub">Problem-first · in-OB ARR blocked on ${escHtml(ownerLabel)} · Owner &amp; ETA are entered on the dashboard (saved on this device)</span></div>
+    <div class="ub-total" style="border-left-color:${accent}"><span class="ub-total-label">ARR Stuck on ${escHtml(ownerLabel)}</span> <span class="ub-total-val">${fmt$(totalArr)}</span><span class="ub-total-sub">${rows.length} ${rows.length === 1 ? 'account' : 'accounts'}</span></div>
+    ${inner}`;
 }
 
 // ─── SLACK VIEW (compact mobile scorecard) ───────────────────
