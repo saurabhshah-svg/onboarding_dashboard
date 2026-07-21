@@ -3116,11 +3116,13 @@ const stackTotals = {
 // OB to Live Projection — next 7 days, stacked by OB POC.
 // Projected go-lives = in-funnel accounts with a Projected Live Date in [today .. today+6].
 // Confirmation-bucket toggle shared by the Next-7-days charts.
-const bucketOf = (rows, b) => b === 'Confirmed' ? rows.filter(isConfirmedConf)
-                            : b === 'Blocked'   ? rows.filter(isBlockedConf)
+// Next-7 charts split Confirmed vs Upside-Solvable separately (not the merged confBucket),
+// so 'Confirmed' here = pure confVal 'Confirmed' (Solvable has its own pill).
+const bucketOf = (rows, b) => b === 'Confirmed'          ? rows.filter(r => confVal(r) === 'Confirmed')
+                            : b === 'Upside - Solvable'  ? rows.filter(r => confVal(r) === 'Upside - Solvable')
                             : rows;
 function bucketTogglePills(current, fn) {
-  return ['Overall','Confirmed','Blocked'].map(b => {
+  return ['Overall','Confirmed','Upside - Solvable'].map(b => {
     const a = b === current;
     return `<button onclick="${fn}('${b}')" style="border:1px solid ${a?'var(--blue)':'var(--border)'};background:${a?'var(--blue)':'#fff'};color:${a?'#fff':'var(--muted)'};border-radius:14px;padding:3px 13px;font-size:11.5px;font-weight:600;cursor:pointer">${b}</button>`;
   }).join('');
