@@ -2725,6 +2725,7 @@ function renderEmailView(rows) {
   const weekRows  = sched.filter(r => inRange(r.projectionDate, d0, endWeek));
   const yestRows  = rows.filter(r => isLive(r) && isDay(r.goLiveDate, dYest));
   const obYestRows = rows.filter(r => isDay(r.obCallDate, dYest));   // entered OB yesterday (OB Call Date)
+  const obThisMonthRows = rows.filter(r => sameMonth(r.obCallDate, CM, CY));  // came into OB this month (OB Call Date)
 
   const heading = TODAY.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 
@@ -2741,18 +2742,12 @@ function renderEmailView(rows) {
   const furtherARR  = furtherRows.reduce((s, r) => s + r.arr, 0);
   const furtherConf = furtherRows.filter(isConfirmed).reduce((s, r) => s + r.arr, 0);
 
-  // One continuous sequence; "live" cards get a green left-border (no green fill).
+  // Only these four numbers (per request); everything else removed.
   const cardList = [
-    C('Total LARR', fmtC(totalLARR), `S ${fmtC(larrStudio)} · V ${fmtC(larrVini)}`, '#2563EB'),
     C('Live This Month', fmtC(liveTotal), `D2D ${fmtC(liveARR)} · Ptnr ${fmtC(PARTNERSHIP.exp)}`, '#16A34A'),
-    C('Went Live Yesterday', fmtC(sum(yestRows)), uniq(yestRows) + ' accounts', '#16A34A'),
-    C('Came In OB Yesterday', fmtC(sum(obYestRows)), uniq(obYestRows) + ' accounts', '#2563EB'),
-    C('ARR Going Live Today', fmtC(sum(todayRows)), 'This week: ' + fmtC(sum(weekRows)), '#16A34A'),
+    C('Sales to OB This Month', fmtC(sum(obThisMonthRows)), uniq(obThisMonthRows) + ' accounts', '#2563EB'),
     C('Further Expected Go-Live This Month', fmtC(furtherARR), `C ${fmtC(furtherConf)} · U ${fmtC(furtherARR - furtherConf)}`, '#D97706'),
-    C('Projected Month-End LARR', fmtC(meLARR), 'Confirmed-only ' + fmtC(meLARRConf), '#2563EB'),
-    C('ARR in Funnel', fmtC(funnelARR), uniq(funnelRows) + ' enterprises', '#2563EB'),
-    C('Blocked ARR', fmtC(blockedARR), `S ${fmtC(sum(blockedRows.filter(isStudio)))} · V ${fmtC(sum(blockedRows.filter(isVini)))}`, '#D97706'),
-    C('Avg OB Time (days)', (avgTat ? avgTat.toFixed(1) : '—'), `S ${stTat.toFixed(1)}d · V ${viTat.toFixed(1)}d`, '#7C3AED')
+    C('Projected Month-End LARR', fmtC(meLARR), 'Confirmed-only ' + fmtC(meLARRConf), '#2563EB')
   ];
   // 2 cards per row as a table (email clients don't do CSS grid)
   let cardRowsHtml = '';
@@ -2760,32 +2755,6 @@ function renderEmailView(rows) {
     cardRowsHtml += `<tr><td style="width:50%;padding:4px;vertical-align:top">${cardList[i]}</td><td style="width:50%;padding:4px;vertical-align:top">${cardList[i+1]||''}</td></tr>`;
   }
   const cards = `<table style="width:100%;border-collapse:collapse">${cardRowsHtml}</table>`;
-
-  // Scheduled-today, grouped by enterprise
-  const grp = (items, withProduct) => {
-    const m = {};
-    items.forEach(r => {
-      const e = r.entityName || r.rooftopName || '—';
-      const g = m[e] || (m[e] = { ent:e, n:0, arr:0, prod:new Set(), poc:new Set() });
-      g.n++; g.arr += r.arr;
-      if (withProduct && r.product) g.prod.add(r.product);
-      if (r.obPoc) g.poc.add(r.obPoc);
-    });
-    return Object.values(m).sort((a,b)=>b.arr-a.arr);
-  };
-  const th   = (t,a) => `<th style="padding:8px 10px;text-align:${a||'left'};font-size:11.5px;text-transform:uppercase;color:${EM}">${t}</th>`;
-  const cell = (v,a,bold) => `<td style="padding:7px 10px;border-bottom:1px solid ${EB};text-align:${a||'left'};${bold?`font-weight:600;color:${ET}`:`color:${EM}`}">${v}</td>`;
-  const secHead = (label,color,n,arr) => `<table style="width:100%;border-collapse:collapse;background:${color}"><tr><td style="color:#ffffff;padding:10px 14px;font-weight:700;font-size:15px">${label}</td><td style="color:#ffffff;padding:10px 14px;font-weight:600;font-size:13px;text-align:right">${n} ent · ${fmt$(arr)}</td></tr></table>`;
-
-  const studioG = grp(todayRows.filter(isStudio), true);
-  const viniG   = grp(todayRows.filter(isVini), false);
-
-  const studioTable = studioG.length
-    ? `<table style="width:100%;border-collapse:collapse;font-size:13.5px;border:1px solid ${EB};border-top:none"><thead><tr style="background:#F8FAFC">${th('Enterprise')}${th('Rooftops','center')}${th('Product')}${th('ARR','right')}${th('OB POC')}</tr></thead><tbody>${studioG.map(g=>`<tr>${cell(g.ent,'left',true)}${cell(g.n,'center',true)}${cell([...g.prod].join(', ')||'—')}${cell(fmt$(g.arr),'right',true)}${cell([...g.poc].join(', ')||'—')}</tr>`).join('')}</tbody></table>`
-    : `<div style="border:1px solid ${EB};border-top:none;padding:14px;color:${EM};font-size:13.5px">No Studio accounts scheduled today.</div>`;
-  const viniTable = viniG.length
-    ? `<table style="width:100%;border-collapse:collapse;font-size:13.5px;border:1px solid ${EB};border-top:none"><thead><tr style="background:#F8FAFC">${th('Enterprise')}${th('Agents','center')}${th('ARR','right')}${th('OB POC')}</tr></thead><tbody>${viniG.map(g=>`<tr>${cell(g.ent,'left',true)}${cell(g.n,'center',true)}${cell(fmt$(g.arr),'right',true)}${cell([...g.poc].join(', ')||'—')}</tr>`).join('')}</tbody></table>`
-    : `<div style="border:1px solid ${EB};border-top:none;padding:14px;color:${EM};font-size:13.5px">No Vini accounts scheduled today.</div>`;
 
   document.getElementById('email-content').innerHTML = `
     <div id="email-card" style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid ${EB};border-radius:14px;overflow:hidden;font-family:'Inter',Arial,Helvetica,sans-serif">
@@ -2795,9 +2764,6 @@ function renderEmailView(rows) {
       </div>
       <div style="padding:16px">
         ${cards}
-        <div style="font-size:17.5px;font-weight:800;color:${ET};margin:22px 4px 10px">Scheduled to Go-Live Today <span style="font-weight:600;color:${EM};font-size:13px">(${uniq(todayRows)} ent · ${fmt$(sum(todayRows))})</span></div>
-        <div style="margin-bottom:14px">${secHead('Studio','#1e40af',studioG.length,sum(todayRows.filter(isStudio)))}${studioTable}</div>
-        <div>${secHead('Vini','#065f46',viniG.length,sum(todayRows.filter(isVini)))}${viniTable}</div>
       </div>
     </div>`;
 }
