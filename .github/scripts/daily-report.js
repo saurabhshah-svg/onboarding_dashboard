@@ -1,4 +1,5 @@
-// Screenshot the deployed Email View and upload it as an image to a Slack channel.
+// Screenshot the deployed Email report card and upload it as an image to a Slack channel.
+// Slack posts the SAME card the email sends (#email-card) — one source of truth, no drift.
 // Run by .github/workflows/daily-slack-screenshot.yml (daily) or manually.
 // Env: REPORT_URL, SLACK_BOT_TOKEN, SLACK_CHANNEL_ID
 const { chromium } = require('playwright');
@@ -11,14 +12,13 @@ async function capture() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 600, height: 1400 }, deviceScaleFactor: 2 });
   await page.goto(REPORT_URL, { waitUntil: 'networkidle', timeout: 90000 });
-  // Make sure we're on the Email View and the live data has rendered
-  // Wait until live data has loaded and the report card is rendered
+  // Wait until live data has loaded and the email report card is rendered
   await page.waitForFunction(
-    () => typeof allRows !== 'undefined' && allRows.length > 0 && !!document.querySelector('#slack-card'),
+    () => typeof allRows !== 'undefined' && allRows.length > 0 && !!document.querySelector('#email-card'),
     { timeout: 90000 }
   );
   await page.waitForTimeout(2500); // let fonts/layout settle
-  const el = await page.$('#slack-card');
+  const el = await page.$('#email-card');
   const buf = await el.screenshot();
   await browser.close();
   return buf;
