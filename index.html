@@ -2604,7 +2604,7 @@ function renderDisplay(rows) {
     return `<div style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--card);border-radius:10px;box-shadow:var(--shadow);overflow:hidden">
       <div class="disp-sec-hd" style="background:${color}"><span>${label}</span></div>
       <div class="disp-scroll"><table class="disp-tbl">
-        <thead><tr><th>OB POC</th><th>Live MTD</th><th>Went Yest</th><th>Further Exp</th><th>In Blocker</th><th>Live Today</th></tr></thead>
+        <thead><tr><th>OB POC</th><th>Live MTD</th><th>Went Yest</th><th>Further Exp</th><th>In Blocker</th><th>Exp Today</th></tr></thead>
         <tbody>${body}<tr class="disp-total"><td>TOTAL</td><td>${cv(t.live)}</td><td>${cv(t.wentYest)}</td><td>${cv(t.further)}</td><td>${cv(t.blocked)}</td><td>${cv(t.today)}</td></tr></tbody>
       </table></div>
     </div>`;
