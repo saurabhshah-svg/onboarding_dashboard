@@ -2083,7 +2083,7 @@ function unblockProgramHtml(programNo, ownerLabel, matchLower, accent) {
 // Fill these two with your Supabase project URL + anon (public) key. The anon key is
 // read-only (RLS), safe in client code. Leave blank → Trends shows a setup card.
 const SUPABASE_URL = 'https://tcalyejukbjuushlbosq.supabase.co';
-const SUPABASE_ANON_KEY = '';   // public anon key — paste it here to light up Trends + Activity Log (read-only via RLS, safe in client)
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjYWx5ZWp1a2JqdXVzaGxib3NxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2NDQ4ODksImV4cCI6MjEwMDIyMDg4OX0.WDe0v_rUelOFqLc67QzU-vXIKgTc-Z8ISPEHAqIJqUg';   // public anon key — read-only via RLS, safe in client
 function supabaseReady() { return !!(SUPABASE_URL && SUPABASE_ANON_KEY); }
 
 let TRENDS_ACCT = null, TRENDS_DAILY = null, TRENDS_LOADED = false, TRENDS_ERR = null, trendsChart = null;
