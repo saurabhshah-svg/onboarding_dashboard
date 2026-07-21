@@ -2157,7 +2157,7 @@ function renderTrends() {
   if (TRENDS_ERR) { el.innerHTML = `<div class="prog-hd"><h2 class="prog-title">Trends</h2></div><div class="empty-state">Couldn't load Supabase — ${escHtml(TRENDS_ERR)}</div>`; return; }
 
   const A = TRENDS_ACCT || [], D = TRENDS_DAILY || [];
-  if (!A.length) { el.innerHTML = `<div class="prog-hd"><h2 class="prog-title">Trends</h2></div><div class="empty-state">No snapshots yet — the daily job writes the first at 9 AM IST. Check back tomorrow.</div>`; return; }
+  if (!A.length) { el.innerHTML = `<div class="prog-hd"><h2 class="prog-title">Trends</h2></div><div class="empty-state">No snapshots yet — the sync runs every 2 hours and writes the first shortly. Check back soon.</div>`; return; }
 
   const isLiveStage = s => /^live/i.test(s || '');
   const isDropStage = s => /drop|churn/i.test(s || '');
@@ -2166,7 +2166,7 @@ function renderTrends() {
   const nDays = D.length || 1;
   const money = fmt$;
   const coverageBanner = nDays < 2
-    ? `<div class="tr-note">📅 Only <b>1 day</b> of history so far — the change views below fill in as daily snapshots accrue (next at 9 AM IST).</div>` : '';
+    ? `<div class="tr-note">📅 Only <b>1 day</b> of history so far — the change views below fill in as daily snapshots accrue (the sync runs every 2 hours).</div>` : '';
 
   // ── 1) Funnel flow over time (daily rollup) ──
   const flowCard = trCard('Funnel flow over time', `${nDays} ${nDays === 1 ? 'day' : 'days'} · ${trFmtD(first)} → ${trFmtD(last)}`,
