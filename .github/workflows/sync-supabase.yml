@@ -1,0 +1,33 @@
+name: Sync OB → Supabase (2-hourly history + activity log)
+
+on:
+  # Every 2 hours, 24/7. GitHub-native cron is best-effort (may fire a few minutes late) —
+  # fine for a trends/activity sync. Also runnable on demand from the Actions tab.
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch: {}
+
+# If a run is still going when the next fires, let the newer one wait rather than overlap
+# (overlapping runs could double-diff and emit duplicate events).
+concurrency:
+  group: sync-supabase
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Playwright (Chromium)
+        run: |
+          npm install playwright@1
+          npx playwright install --with-deps chromium
+      - name: Read dashboard → diff → write Supabase (ob_current / ob_event / ob_snapshot)
+        env:
+          SNAPSHOT_URL: https://spyne-onboarding-dashboard.vercel.app/
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node .github/scripts/snapshot-supabase.js

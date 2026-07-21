@@ -33,6 +33,63 @@ alter table ob_snapshot enable row level security;
 drop policy if exists read_anon on ob_snapshot;
 create policy read_anon on ob_snapshot for select to anon using (true);
 
+-- ============================================================
+-- ob_current — the latest known state per account (one row per row_key).
+-- This is the DIFF BASE: each 2-hourly sync compares the fresh sheet state to
+-- this table to decide what changed, then overwrites it. Tiny (~one row per
+-- account). The activity log (ob_event) is derived from these diffs.
+-- ============================================================
+create table if not exists ob_current (
+  row_key              text primary key,   -- entId|rooftop|source
+  account              text,
+  rooftop              text,
+  source               text,
+  product              text,
+  ob_poc               text,
+  ae_name              text,
+  arr                  numeric,
+  stage                text,
+  sub_stage            text,
+  current_month_conf   text,
+  blocked_owner        text,
+  blocked_remarks      text,
+  projection_date      date,
+  go_live_date         date,
+  drop_date            date,
+  synced_at            timestamptz not null default now()
+);
+alter table ob_current enable row level security;
+drop policy if exists read_anon on ob_current;
+create policy read_anon on ob_current for select to anon using (true);
+
+-- ============================================================
+-- ob_event — append-only ACTIVITY LOG. One row per detected change, written by
+-- the sync when the fresh state differs from ob_current. This is what the
+-- dashboard's Activity Log tab reads (e.g. "when did account X go Live → OB").
+-- ============================================================
+create table if not exists ob_event (
+  id           bigint generated always as identity primary key,
+  event_ts     timestamptz not null default now(),
+  row_key      text not null,
+  account      text,
+  source       text,
+  product      text,
+  arr          numeric,           -- ARR at the time of the event (for weighting/sorting)
+  event_type   text not null,     -- entered_ob | went_live | live_to_ob | dropped | undropped |
+                                   -- removed_from_sheet | projection_moved | go_live_changed |
+                                   -- arr_changed | confirmation_flip | blocked_owner_changed | sub_stage_changed
+  field        text,              -- which field changed (for the generic change types)
+  old_value    text,
+  new_value    text,
+  detail       text               -- human-readable summary, e.g. '+45 days' or '₹30,000 → ₹0'
+);
+create index if not exists ob_event_ts_idx    on ob_event (event_ts desc);
+create index if not exists ob_event_key_idx    on ob_event (row_key, event_ts desc);
+create index if not exists ob_event_type_idx  on ob_event (event_type, event_ts desc);
+alter table ob_event enable row level security;
+drop policy if exists read_anon on ob_event;
+create policy read_anon on ob_event for select to anon using (true);
+
 -- ── Per-account rollup (one row per account) — powers the account-level Trends views ──
 create or replace view v_account_history as
 with ordered as (
@@ -83,7 +140,8 @@ select
   round(sum(arr) filter (where stage ~* 'drop|churn'))            as dropped_arr,
   round(sum(arr) filter (where stage !~* '^live' and stage !~* 'drop|churn')) as in_ob_arr,
   count(*)       filter (where stage !~* '^live' and stage !~* 'drop|churn')  as in_ob_n,
-  round(sum(arr) filter (where current_month_conf = 'Confirmed' and stage !~* '^live|drop|churn')) as confirmed_arr
+  -- "Confirmed" bucket matches the dashboard's confBucket: Confirmed + Upside - Solvable (both land this month)
+  round(sum(arr) filter (where (current_month_conf ilike '%confirm%' or current_month_conf ilike '%solv%') and stage !~* '^live|drop|churn')) as confirmed_arr
 from ob_snapshot
 group by snapshot_date
 order by snapshot_date;

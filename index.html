@@ -331,6 +331,7 @@ const EMBEDDED_DATA = {
   <div class="tab" onclick="switchTab('analytics')">Analytics</div>
   <div class="tab" onclick="switchTab('views')">Views</div>
   <div class="tab" onclick="switchTab('trends')">Trends</div>
+  <div class="tab" onclick="switchTab('activity')">Activity Log</div>
 </div>
 
 <!-- Filter bars -->
@@ -641,6 +642,13 @@ const EMBEDDED_DATA = {
 <div id="tab-trends" class="main">
   <div style="padding:8px 24px 24px 24px">
     <div id="trends-content"></div>
+  </div>
+</div>
+
+<!-- Activity Log Tab — timestamped change feed (Supabase ob_event) -->
+<div id="tab-activity" class="main">
+  <div style="padding:8px 24px 24px 24px">
+    <div id="activity-content"></div>
   </div>
 </div>
 
@@ -1212,7 +1220,7 @@ function showErrorBanner(msg) {
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.tab').forEach((el,i) => {
-    const tabs = ['overview','studio','vini','programs','analytics','views','trends'];
+    const tabs = ['overview','studio','vini','programs','analytics','views','trends','activity'];
     el.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.main').forEach(el => el.classList.remove('active'));
@@ -1447,6 +1455,8 @@ function renderAll() {
     renderAnalytics(allRows);
   } else if (currentTab === 'trends') {
     renderTrends();
+  } else if (currentTab === 'activity') {
+    renderActivity();
   } else if (currentTab === 'views') {
     if (currentView === 'email')        renderEmailView(allRows);
     else if (currentView === 'display') renderDisplay(allRows);
@@ -2072,8 +2082,8 @@ function unblockProgramHtml(programNo, ownerLabel, matchLower, accent) {
 // ═══ TRENDS — historical change-tracking from Supabase ══════════════════════
 // Fill these two with your Supabase project URL + anon (public) key. The anon key is
 // read-only (RLS), safe in client code. Leave blank → Trends shows a setup card.
-const SUPABASE_URL = '';        // e.g. https://abcd1234.supabase.co
-const SUPABASE_ANON_KEY = '';   // public anon key
+const SUPABASE_URL = 'https://tcalyejukbjuushlbosq.supabase.co';
+const SUPABASE_ANON_KEY = '';   // public anon key — paste it here to light up Trends + Activity Log (read-only via RLS, safe in client)
 function supabaseReady() { return !!(SUPABASE_URL && SUPABASE_ANON_KEY); }
 
 let TRENDS_ACCT = null, TRENDS_DAILY = null, TRENDS_LOADED = false, TRENDS_ERR = null, trendsChart = null;
@@ -2112,15 +2122,15 @@ function trTable(headers, body, empty) {
   return `<div class="tr-tbl-wrap"><table class="tr-tbl"><thead><tr>${headers.map(h => `<th${h.r ? ' style="text-align:right"' : ''}>${h.t}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 function trendsSetupCard() {
-  return `<div class="prog-hd"><h2 class="prog-title">Trends</h2><span class="prog-sub">Historical change-tracking — powered by daily Supabase snapshots</span></div>
+  return `<div class="prog-hd"><h2 class="prog-title">Trends</h2><span class="prog-sub">Historical change-tracking — powered by the 2-hourly Supabase sync</span></div>
     <div class="tr-setup">
-      <div class="tr-setup-title">⚙️ Connect Supabase to turn this on</div>
+      <div class="tr-setup-title">⚙️ One step left to turn this on</div>
       <ol class="tr-setup-list">
-        <li>Create a Supabase project → run <code>dashboard/supabase/schema.sql</code> in the SQL editor.</li>
-        <li>Add repo secrets <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_KEY</code> (Settings → Secrets → Actions) so the 9 AM job writes a daily snapshot.</li>
-        <li>Send me the <b>Project URL</b> + <b>anon key</b> — I'll wire them into <code>SUPABASE_URL</code> / <code>SUPABASE_ANON_KEY</code> and this tab lights up.</li>
+        <li>Run <code>dashboard/supabase/schema.sql</code> in the Supabase SQL editor (tables + views + RLS).</li>
+        <li>Add repo secrets <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_KEY</code> (Settings → Secrets → Actions) so the 2-hourly sync writes history + the activity log.</li>
+        <li>Send me the <b>anon (public) key</b> — I'll paste it into <code>SUPABASE_ANON_KEY</code> and this tab lights up. (Project URL is already set.)</li>
       </ol>
-      <div class="tr-setup-note">History accrues from the first snapshot — the change views fill in day by day.</div>
+      <div class="tr-setup-note">History accrues from the first sync — the change views fill in as snapshots build up.</div>
     </div>`;
 }
 
@@ -2282,6 +2292,129 @@ function renderTrends() {
       });
     }
   }
+}
+
+// ═══ ACTIVITY LOG — timestamped change feed from Supabase ob_event ══════════
+let ACT_ROWS = null, ACT_LOADED = false, ACT_ERR = null, ACT_FILTER = 'all';
+
+const ACT_TYPES = {
+  live_to_ob:            { label: 'Live → OB',         color: '#DC2626', bg: '#FEE2E2' },
+  went_live:             { label: 'Went Live',         color: '#16A34A', bg: '#DCFCE7' },
+  dropped:               { label: 'Dropped',           color: '#B91C1C', bg: '#FEE2E2' },
+  undropped:             { label: 'Un-dropped',        color: '#0891B2', bg: '#ECFEFF' },
+  entered_ob:            { label: 'Entered OB',        color: '#2563EB', bg: '#EFF6FF' },
+  projection_moved:      { label: 'Projection moved',  color: '#D97706', bg: '#FEF3C7' },
+  go_live_changed:       { label: 'Go-live changed',   color: '#D97706', bg: '#FEF3C7' },
+  arr_changed:           { label: 'ARR changed',       color: '#7C3AED', bg: '#F3E8FF' },
+  confirmation_flip:     { label: 'Confirmation flip', color: '#0891B2', bg: '#ECFEFF' },
+  blocked_owner_changed: { label: 'Blocked owner',     color: '#475569', bg: '#F1F5F9' },
+  sub_stage_changed:     { label: 'Sub-stage',         color: '#2563EB', bg: '#EFF6FF' },
+  removed_from_sheet:    { label: 'Removed',           color: '#64748B', bg: '#EEF2F7' }
+};
+const ACT_ORDER = ['live_to_ob','went_live','dropped','undropped','entered_ob','projection_moved','go_live_changed','arr_changed','confirmation_flip','blocked_owner_changed','sub_stage_changed','removed_from_sheet'];
+
+async function loadActivity() {
+  if (ACT_LOADED || !supabaseReady()) return;
+  try {
+    ACT_ROWS = await sbFetch('ob_event?select=*&order=event_ts.desc&limit=1000');
+    ACT_LOADED = true; ACT_ERR = null;
+  } catch (e) { ACT_ERR = e.message; }
+}
+
+function actDay(ts) { const d = new Date(ts); return isNaN(d) ? '—' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
+function actTime(ts) { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+
+function actRow(r) {
+  const m = ACT_TYPES[r.event_type] || { label: r.event_type, color: '#64748B', bg: '#EEF2F7' };
+  const change = r.detail ? escHtml(r.detail)
+    : (r.old_value != null || r.new_value != null) ? `${escHtml(r.old_value || '—')} → ${escHtml(r.new_value || '—')}` : '';
+  return `<tr data-type="${escAttr(r.event_type)}" data-acct="${escAttr((r.account || r.row_key || '').toLowerCase())}">
+      <td class="act-time">${actTime(r.event_ts)}</td>
+      <td class="tr-acct">${escHtml(r.account || r.row_key || '—')} ${trProdBadge(r.source)}</td>
+      <td><span class="act-badge" style="background:${m.bg};color:${m.color}">${m.label}</span></td>
+      <td class="act-change">${change}</td>
+      <td class="tr-r">${r.arr ? fmt$(+r.arr) : ''}</td></tr>`;
+}
+
+function actApply() {
+  const q = (document.getElementById('act-search')?.value || '').trim().toLowerCase();
+  let shown = 0;
+  document.querySelectorAll('#activity-content tr[data-acct]').forEach(tr => {
+    const vis = (ACT_FILTER === 'all' || tr.dataset.type === ACT_FILTER) && (!q || tr.dataset.acct.includes(q));
+    tr.style.display = vis ? '' : 'none';
+    if (vis) shown++;
+  });
+  document.querySelectorAll('#activity-content .act-day').forEach(g => {
+    g.style.display = [...g.querySelectorAll('tr[data-acct]')].some(tr => tr.style.display !== 'none') ? '' : 'none';
+  });
+  const c = document.getElementById('act-count'); if (c) c.textContent = shown + ' event' + (shown === 1 ? '' : 's');
+}
+function actSetFilter(t, el) {
+  ACT_FILTER = t;
+  document.querySelectorAll('#activity-content .act-chip').forEach(x => x.classList.remove('active'));
+  if (el) el.classList.add('active');
+  actApply();
+}
+
+function renderActivity() {
+  const el = document.getElementById('activity-content'); if (!el) return;
+  const HD = sub => `<div class="prog-hd"><h2 class="prog-title">Activity Log</h2><span class="prog-sub">${sub}</span></div>`;
+  if (!supabaseReady()) {
+    el.innerHTML = HD('Timestamped change feed — powered by the 2-hourly Supabase sync') +
+      `<div class="tr-setup"><div class="tr-setup-title">⚙️ Connect Supabase to turn this on</div>
+        <div class="tr-setup-note">Once the anon key is wired in and the sync has run at least twice, every account movement — <b>Live → Onboarding</b>, drops, go-lives, projection slips, ARR &amp; confirmation changes — shows here with a timestamp. (Same setup as the Trends tab.)</div></div>`;
+    return;
+  }
+  if (!ACT_LOADED && !ACT_ERR) {
+    el.innerHTML = HD('Loading…') + `<div class="empty-state">Loading activity from Supabase…</div>`;
+    loadActivity().then(() => { if (currentTab === 'activity') renderActivity(); });
+    return;
+  }
+  if (ACT_ERR) { el.innerHTML = HD('') + `<div class="empty-state">Couldn't load Supabase — ${escHtml(ACT_ERR)}</div>`; return; }
+
+  const A = ACT_ROWS || [];
+  const style = `<style>
+    .act-controls{display:flex;flex-direction:column;gap:10px;margin:4px 0 16px}
+    .act-chips{display:flex;flex-wrap:wrap;gap:6px}
+    .act-chip{border:1px solid var(--border,#E2E8F0);background:#fff;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;color:#475569;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,color .12s}
+    .act-chip:hover{background:#F8FAFC}
+    .act-chip.active{background:#0F172A;color:#fff;border-color:#0F172A}
+    .act-chip-n{font-size:11px;opacity:.7;font-weight:700}
+    .act-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+    .act-controls-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+    .act-search{width:280px;max-width:70%;border:1px solid var(--border,#E2E8F0);border-radius:8px;padding:7px 11px;font-size:13px;outline:none}
+    .act-search:focus{border-color:#94A3B8}
+    .act-count{font-size:12px;color:var(--faint,#94A3B8);font-weight:600}
+    .act-day{margin-bottom:18px}
+    .act-day-hd{font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em;margin:0 0 6px 2px}
+    .act-tbl td{vertical-align:top}
+    .act-time{white-space:nowrap;color:var(--faint,#94A3B8);font-variant-numeric:tabular-nums;font-size:12px;width:48px}
+    .act-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap}
+    .act-change{color:#334155;font-size:13px}
+  </style>`;
+
+  if (!A.length) {
+    el.innerHTML = style + HD('Timestamped change feed') +
+      `<div class="empty-state">No activity logged yet. The sync runs every 2 hours and records each change from the run after the baseline — check back once the sheet has moved.</div>`;
+    return;
+  }
+
+  const present = ACT_ORDER.filter(t => A.some(r => r.event_type === t));
+  const chips = `<div class="act-chips">
+      <button class="act-chip active" onclick="actSetFilter('all',this)">All <span class="act-chip-n">${A.length}</span></button>
+      ${present.map(t => { const m = ACT_TYPES[t], n = A.filter(r => r.event_type === t).length; return `<button class="act-chip" onclick="actSetFilter('${t}',this)"><span class="act-dot" style="background:${m.color}"></span>${m.label} <span class="act-chip-n">${n}</span></button>`; }).join('')}
+    </div>`;
+  const controls = `<div class="act-controls">${chips}
+      <div class="act-controls-row"><input id="act-search" class="act-search" type="text" placeholder="Filter by account…" oninput="actApply()">
+      <span id="act-count" class="act-count">${A.length} events</span></div></div>`;
+
+  const groups = [];
+  let cur = null;
+  A.forEach(r => { const day = actDay(r.event_ts); if (!cur || cur.day !== day) { cur = { day, rows: [] }; groups.push(cur); } cur.rows.push(r); });
+  const feed = groups.map(g => `<div class="act-day"><div class="act-day-hd">${g.day}</div>
+      <div class="tr-tbl-wrap"><table class="tr-tbl act-tbl"><tbody>${g.rows.map(actRow).join('')}</tbody></table></div></div>`).join('');
+
+  el.innerHTML = style + HD(`${A.length} events · since ${actDay(A[A.length - 1].event_ts)}${A.length >= 1000 ? ' · showing latest 1,000' : ''}`) + controls + feed;
 }
 
 // ─── SLACK VIEW (compact mobile scorecard) ───────────────────
@@ -3912,7 +4045,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // #email / #display / #slack land on the Views tab with the right sub-tab selected.
   const tab = (location.hash || '').replace('#', '');
   if (['email','display','slack'].includes(tab)) { switchTab('views'); switchView(tab); }
-  else if (['overview','studio','vini','programs','analytics','views','trends'].includes(tab)) switchTab(tab);
+  else if (['overview','studio','vini','programs','analytics','views','trends','activity'].includes(tab)) switchTab(tab);
   loadAllData();
   // Auto-refresh every 4 hours
   setInterval(loadAllData, 4 * 60 * 60 * 1000);
