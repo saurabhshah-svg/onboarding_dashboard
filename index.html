@@ -2741,13 +2741,16 @@ function renderEmailView(rows) {
   const furtherRows = expRows.filter(r => !isDay(r.projectionDate, d0));
   const furtherARR  = furtherRows.reduce((s, r) => s + r.arr, 0);
   const furtherConf = furtherRows.filter(isConfirmed).reduce((s, r) => s + r.arr, 0);
+  // July LARR target = frozen base + $1.8M live target. MONTHLY UPKEEP: roll the $1.8M each month.
+  const larrTarget = CURR_BASE + 1800000;
+  const larrGap    = meLARR - larrTarget;   // negative = short of target (shown red)
 
   // Only these four numbers (per request); everything else removed.
   const cardList = [
     C('Live This Month', fmtC(liveTotal), `D2D ${fmtC(liveARR)} · Ptnr ${fmtC(PARTNERSHIP.exp)}`, '#16A34A'),
     C('Sales to OB This Month', fmtC(sum(obThisMonthRows)), uniq(obThisMonthRows) + ' accounts', '#2563EB'),
     C('Further Expected Go-Live This Month', fmtC(furtherARR), `C ${fmtC(furtherConf)} · U ${fmtC(furtherARR - furtherConf)}`, '#D97706'),
-    C('Projected Month-End LARR', fmtC(meLARR), 'Confirmed-only ' + fmtC(meLARRConf), '#2563EB')
+    C('Projected Month-End LARR', fmtC(meLARR), `Confirmed-only ${fmtC(meLARRConf)}<br><span style="color:${larrGap<0?'#DC2626':'#16A34A'};font-weight:700">${larrGap<0?'−':'+'}${fmtC(Math.abs(larrGap))} vs ${fmtC(larrTarget)} target</span>`, '#2563EB')
   ];
   // 2 cards per row as a table (email clients don't do CSS grid)
   let cardRowsHtml = '';
