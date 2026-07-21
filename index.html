@@ -2095,12 +2095,24 @@ async function sbFetch(pathQuery) {
   if (!res.ok) throw new Error('HTTP ' + res.status + ' — ' + (await res.text()).slice(0, 200));
   return res.json();
 }
+// PostgREST caps each response at 1000 rows — page through with a stable order to get all.
+async function sbFetchAll(pathBase, orderCol) {
+  const PAGE = 1000; let offset = 0, all = [];
+  const sep = pathBase.includes('?') ? '&' : '?';
+  for (;;) {
+    const chunk = await sbFetch(`${pathBase}${sep}order=${orderCol}.asc&limit=${PAGE}&offset=${offset}`);
+    all = all.concat(chunk);
+    if (chunk.length < PAGE || offset > 100000) break;
+    offset += PAGE;
+  }
+  return all;
+}
 async function loadTrends() {
   if (TRENDS_LOADED || !supabaseReady()) return;
   try {
     const [acct, daily] = await Promise.all([
-      sbFetch('v_account_history?select=*&limit=5000'),
-      sbFetch('v_daily_rollup?select=*&order=snapshot_date.asc&limit=1000')
+      sbFetchAll('v_account_history?select=*', 'row_key'),
+      sbFetch('v_daily_rollup?select=*&order=snapshot_date.asc&limit=5000')
     ]);
     TRENDS_ACCT = acct; TRENDS_DAILY = daily; TRENDS_LOADED = true; TRENDS_ERR = null;
   } catch (e) { TRENDS_ERR = e.message; }
