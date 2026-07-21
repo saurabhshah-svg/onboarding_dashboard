@@ -859,10 +859,19 @@ function liveThisMonth(r) { return isLive(r) && sameMonth(r.goLiveDate, CM, CY);
 function expThisMonth(r) { return !isLive(r) && !isDropped(r) && sameMonth(r.projectionDate, CM, CY); }
 function expNextMonth(r) { return !isLive(r) && !isDropped(r) && sameMonth(r.projectionDate, NM, NY); }
 function droppedThisMonth(r) { return isDropped(r) && (sameMonth(r.goLiveDate,CM,CY)||sameMonth(r.projectionDate,CM,CY)); }
-// Current-Month-Confirmations bucket. The sheet's value may read 'Upside' OR 'Blocked' — both
-// mean the same "Blocked" bucket (needs unblocking). Anything else non-'Confirmed' is Unconfirmed.
-// The UI says "Blocked" everywhere (never "Upside").
-function confBucket(r) { const v=(r.currentMonthConf||'').trim().toLowerCase(); return v==='confirmed' ? 'Confirmed' : (v==='upside'||v==='blocked') ? 'Blocked' : 'Unconfirmed'; }
+// Current-Month-Confirmations status. Sheet dropdown (all 3 tabs) = Confirmed / Upside - Solvable /
+// Upside - Blocked ("Following Month" was removed). Merged into 3 buckets (2026-07-17):
+//   Confirmed bucket = "Confirmed" + "Upside - Solvable" (both will land — paired w/ projection month),
+//   Blocked bucket   = "Upside - Blocked",  else Unconfirmed. (Legacy plain 'Upside'/'Blocked' → Blocked.)
+function confVal(r) {
+  const v = (r.currentMonthConf || '').trim().toLowerCase();
+  if (/confirm/.test(v))        return 'Confirmed';
+  if (/solv/.test(v))           return 'Upside - Solvable';
+  if (/block|^upside$/.test(v)) return 'Upside - Blocked';
+  if (/following/.test(v))      return 'Following Month';
+  return 'Unconfirmed';
+}
+function confBucket(r) { const c = confVal(r); return (c === 'Confirmed' || c === 'Upside - Solvable') ? 'Confirmed' : c === 'Upside - Blocked' ? 'Blocked' : 'Unconfirmed'; }
 function isBlockedConf(r) { return confBucket(r) === 'Blocked'; }
 function isConfirmedConf(r) { return confBucket(r) === 'Confirmed'; }
 function srcCat(r, forLive) {
@@ -2284,7 +2293,7 @@ function renderSlack(rows) {
   const liveRows = rows.filter(liveThisMonth), expRows = rows.filter(expThisMonth), dropRows = rows.filter(droppedThisMonth);
   const blockedRows = rows.filter(isBlockedConf);
   const liveARR = sum(liveRows), expARR = sum(expRows);
-  const expConf = sum(expRows.filter(r => r.currentMonthConf === 'Confirmed'));  // confirmed-to-go-live only
+  const expConf = sum(expRows.filter(isConfirmedConf));  // confirmed-to-go-live (Confirmed + Upside-Solvable)
   const liveTotal = liveARR + PARTNERSHIP.exp;   // Live this month incl. partnership expansion
   const totalLARR = CURR_BASE + liveARR - REVENUE_LOSS + PARTNERSHIP.net;   // OB/Sales drops were never live → don't reduce LARR
   const meLARR = totalLARR + expConf;       // Exp. Month-End = already live + confirmed
@@ -2407,8 +2416,8 @@ function renderDisplay(rows) {
   const liveTotal = liveARR + PARTNERSHIP.exp;   // incl. partnership expansion
   const totalLARR = CURR_BASE + liveARR - REVENUE_LOSS + PARTNERSHIP.net;   // OB/Sales drops were never live → don't reduce LARR
   const meLARR = totalLARR + sum(expRows);
-  const expConf = sum(expRows.filter(r=>r.currentMonthConf==='Confirmed'));
-  const furtherConf = sum(furtherRows.filter(r=>r.currentMonthConf==='Confirmed'));
+  const expConf = sum(expRows.filter(isConfirmedConf));
+  const furtherConf = sum(furtherRows.filter(isConfirmedConf));
   const meLARRConf = totalLARR + expConf;
   const larrStudio = CURR_BASE_BY_PRODUCT.studio + sum(liveRows.filter(isStudio)) - REVENUE_LOSS_BY_PRODUCT.studio + PARTNERSHIP.netStudio;
   const larrVini   = CURR_BASE_BY_PRODUCT.vini   + sum(liveRows.filter(isVini))   - REVENUE_LOSS_BY_PRODUCT.vini   + PARTNERSHIP.netVini;
