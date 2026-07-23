@@ -2635,7 +2635,7 @@ function renderDisplay(rows) {
 }
 
 // Display-board version of the Next-7-days OB→Live projection (stacked by OB POC, bottom legend)
-let dispNext7Bucket = 'Overall', dispNext7Rows = [];
+let dispNext7Bucket = 'Confirmed', dispNext7Rows = [];   // Display view defaults to Confirmed
 function setDispNext7Bucket(b) { dispNext7Bucket = b; renderDispNext7(dispNext7Rows); }
 function renderDispNext7(rows) {
   destroyChart('disp-next7');
