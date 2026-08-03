@@ -14,10 +14,12 @@ const TO = process.env.EMAIL_TO || 'reports@spyne.ai';
 async function extractHtml() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 600, height: 1400 } });
-  await page.goto(URL, { waitUntil: 'networkidle', timeout: 90000 });
+  // 'domcontentloaded' (not 'networkidle'): the dashboard retries flaky proxy calls, so the
+  // network may never idle — allRows/#email-card is the real readiness gate.
+  await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForFunction(
     () => typeof allRows !== 'undefined' && allRows.length > 0 && !!document.querySelector('#email-card'),
-    { timeout: 90000 }
+    { timeout: 120000 }
   );
   await page.waitForTimeout(1500);
   const html = await page.evaluate(() => document.getElementById('email-card').outerHTML);

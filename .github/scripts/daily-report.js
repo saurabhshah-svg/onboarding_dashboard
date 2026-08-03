@@ -11,11 +11,12 @@ const CHANNEL = process.env.SLACK_CHANNEL_ID;
 async function capture() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 600, height: 1400 }, deviceScaleFactor: 2 });
-  await page.goto(REPORT_URL, { waitUntil: 'networkidle', timeout: 90000 });
-  // Wait until live data has loaded and the email report card is rendered
+  // 'domcontentloaded' (not 'networkidle'): the dashboard retries flaky proxy calls, so the
+  // network may never idle — allRows/#email-card is the real readiness gate.
+  await page.goto(REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForFunction(
     () => typeof allRows !== 'undefined' && allRows.length > 0 && !!document.querySelector('#email-card'),
-    { timeout: 90000 }
+    { timeout: 120000 }
   );
   await page.waitForTimeout(2500); // let fonts/layout settle
   const el = await page.$('#email-card');

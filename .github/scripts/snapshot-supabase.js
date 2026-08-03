@@ -50,8 +50,10 @@ const money = n => Math.round(n || 0).toLocaleString('en-US');
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await page.goto(URL, { waitUntil: 'networkidle', timeout: 90000 });
-  await page.waitForFunction(() => typeof allRows !== 'undefined' && allRows.length > 0, { timeout: 90000 });
+  // 'domcontentloaded' (not 'networkidle'): the dashboard retries flaky proxy calls, so the
+  // network may never idle — allRows is the real readiness gate.
+  await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+  await page.waitForFunction(() => typeof allRows !== 'undefined' && allRows.length > 0, { timeout: 120000 });
   await page.waitForTimeout(1200);
 
   const rows = await page.evaluate(() => {
