@@ -1412,16 +1412,22 @@ async function loadAllData() {
 
     if (APPS_SCRIPT_URL && APPS_SCRIPT_URL.trim() !== '') {
       showLoadingBanner('⟳ Fetching live data from Google Sheets...');
-      const [v, a, p, c, ae, pt, p1] = await Promise.all([
-        fetchLiveSheet('vini'),
-        fetchLiveSheet('amer'),
-        fetchLiveSheet('apac'),
-        fetchLiveSheet('churn').catch(err => { console.warn('Churn fetch failed, using fallback REVENUE_LOSS:', err); return null; }),
-        fetchLiveSheet('aemap').catch(err => { console.warn('AE map fetch failed, AE column will be blank:', err); return null; }),
+      // gviz sources live on a different host (docs.google.com) — safe to run in parallel.
+      const gvizP = Promise.all([
         fetchPartnership().catch(err => { console.warn('Partnership fetch failed, channel will show $0:', err); return null; }),
-        fetchProg1().catch(err => { console.warn('Program 1 fetch failed, section will be hidden:', err); return null; }),
-        fetchProgInputs().catch(() => null)   // shared Owner/ETA for Programs 2/3/4 (no-ops if route not deployed)
+        fetchProg1().catch(err => { console.warn('Program 1 fetch failed, section will be hidden:', err); return null; })
       ]);
+      // Apps Script proxy calls MUST be sequential. Concurrent hits overwhelm the free-tier
+      // web app (cold-start + the large APAC payload): it returns googleusercontent "echo" 404s
+      // and the whole load fails (verified: 5 concurrent → 0 succeed; sequential + per-call
+      // retry → all succeed once the instance warms).
+      const v  = await fetchLiveSheet('vini');
+      const a  = await fetchLiveSheet('amer');
+      const p  = await fetchLiveSheet('apac');
+      const c  = await fetchLiveSheet('churn').catch(err => { console.warn('Churn fetch failed, using fallback REVENUE_LOSS:', err); return null; });
+      const ae = await fetchLiveSheet('aemap').catch(err => { console.warn('AE map fetch failed, AE column will be blank:', err); return null; });
+      await fetchProgInputs().catch(() => null);   // shared Owner/ETA (proxy; fast no-op if route not deployed)
+      const [pt, p1] = await gvizP;
       viniCSV = v.csv; amerCSV = a.csv; apacCSV = p.csv;
       if (c && c.csv) {
         churnRowsRaw = c.csv;                 // keep raw rows for month-specific churn (e.g. last-month bridge)
