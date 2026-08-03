@@ -834,16 +834,21 @@ function churnD2DForMonth(ym) {
 // endTotal; d2dEnd + resEnd = endTotal; endStudio + endVini = endTotal).
 function lastMonthWalk() {
   return {
-    label: "Jun '26", prevLabel: "May '26",
-    startTotal: 7732095,
+    label: "Jul '26", prevLabel: "Jun '26",
+    startTotal: 8187394,                  // = Jun month-end LARR
     // New Addition (Expansion)
-    addD2D: 607452, addRes: 145848, addTotal: 753300,
+    addD2D: 632851, addRes: 216828, addTotal: 849679,
     // Revenue Loss
-    chD2D: 237816, chRes: 60144, chTotal: 297960,
-    // Month-End LARR (= new base) + splits
-    endTotal: 8187394,
-    d2dEnd: 6608079, resEnd: 1579315,     // D2D vs Reseller
-    endStudio: 6749214, endVini: 1438180  // Studio vs Vini
+    chD2D: 294383, chRes: 18468, chTotal: 312851,
+    // Month-End LARR (= new base for Aug) + splits.  8,187,394 + 849,679 − 312,851 = 8,724,222
+    endTotal: 8724222,
+    // D2D vs Reseller — rolled forward from Jun close by Jul channel movement (accurate):
+    //   D2D 6,608,079 +632,851 −294,383 = 6,946,547 · Res 1,579,315 +216,828 −18,468 = 1,777,675
+    d2dEnd: 6946547, resEnd: 1777675,
+    // Studio vs Vini — ESTIMATED: Jul product split not yet available. Jun book + Jul net movement
+    // (+536,828) apportioned by Jun's ratio (Studio 82.4% / Vini 17.6%); reconciles to endTotal.
+    // TODO(monthly): replace with the real Jul Studio/Vini month-end when the split is available.
+    endStudio: 7191768, endVini: 1532454
   };
 }
 
