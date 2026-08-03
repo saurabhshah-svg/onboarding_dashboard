@@ -16,7 +16,7 @@ async function capture() {
   await page.goto(REPORT_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForFunction(
     () => typeof allRows !== 'undefined' && allRows.length > 0 && !!document.querySelector('#email-card'),
-    { timeout: 180000 }
+    { timeout: 240000 }
   );
   await page.waitForTimeout(2500); // let fonts/layout settle
   const el = await page.$('#email-card');

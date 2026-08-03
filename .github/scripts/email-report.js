@@ -19,7 +19,7 @@ async function extractHtml() {
   await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForFunction(
     () => typeof allRows !== 'undefined' && allRows.length > 0 && !!document.querySelector('#email-card'),
-    { timeout: 180000 }
+    { timeout: 240000 }
   );
   await page.waitForTimeout(1500);
   const html = await page.evaluate(() => document.getElementById('email-card').outerHTML);

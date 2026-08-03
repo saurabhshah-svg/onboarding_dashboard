@@ -1,10 +1,12 @@
 name: Sync OB → Supabase (2-hourly history + activity log)
 
 on:
-  # Every 2 hours, 24/7. GitHub-native cron is best-effort (may fire a few minutes late) —
-  # fine for a trends/activity sync. Also runnable on demand from the Actions tab.
+  # Every 6 hours (was every 2h). Reduced 2026-07-22: the 2-hourly full-dashboard loads were
+  # overloading the free-tier Apps Script proxy (execution-quota/cold-starts → 404s on the
+  # dashboard). 4 runs/day keeps the activity log fresh enough while relieving the proxy.
+  # Bump back to */2 once the proxy load is fixed (trim APAC tab / move data to a real backend).
   schedule:
-    - cron: '0 */2 * * *'
+    - cron: '0 */6 * * *'
   workflow_dispatch: {}
 
 # If a run is still going when the next fires, let the newer one wait rather than overlap
