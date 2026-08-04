@@ -733,8 +733,8 @@ const FALLBACK_SYNC = EMBEDDED_DATA.syncedAt;
 const BASE_LARR_BY_PRODUCT = { vini: 1098016, studio: 6634079 };
 const BASE_LARR = BASE_LARR_BY_PRODUCT.vini + BASE_LARR_BY_PRODUCT.studio;  // 7,732,095 (All products)
 // Monthly targets (for the Slack View scorecard)
-const LARR_TARGET = 9700000;       // $9.7M total LARR target
-const NEW_LIVE_TARGET = 2000000;   // $2.0M new-live (went live this month) target
+const LARR_TARGET = 9700000;       // (legacy; LARR target is now computed as CURR_BASE + NEW_LIVE_TARGET)
+const NEW_LIVE_TARGET = 1500000;   // $1.5M new-live (went-live this month) target for the current month
 const PIPELINE_TARGETS = { 'PWS': 500000, 'In-OB': 800000, 'New Sales': 700000 };
 // Fixed funnel ARR at start of month (Day 1 snapshot — does not change dynamically)
 const INOB_START_ARR = 1418750;   // In-OB funnel ARR at month start
@@ -836,19 +836,19 @@ function lastMonthWalk() {
   return {
     label: "Jul '26", prevLabel: "Jun '26",
     startTotal: 8187394,                  // = Jun month-end LARR
-    // New Addition (Expansion)
-    addD2D: 632851, addRes: 216828, addTotal: 849679,
-    // Revenue Loss
-    chD2D: 294383, chRes: 18468, chTotal: 312851,
-    // Month-End LARR (= new base for Aug) + splits.  8,187,394 + 849,679 − 312,851 = 8,724,222
-    endTotal: 8724222,
+    // New Addition (Expansion). D2D 650,048 = 632,851 + 17,197 (Studio 161,672 = 144,475+17,197 · Vini 488,376). Reseller 18,069×12.
+    addD2D: 650048, addRes: 216828, addTotal: 866876,
+    // Revenue Loss. D2D/Others 301,083 = 294,383 + 6,700.
+    chD2D: 301083, chRes: 18468, chTotal: 319551,
+    // Month-End LARR (= new base for Aug) + splits.  8,187,394 + 866,876 − 319,551 = 8,734,719
+    endTotal: 8734719,
     // D2D vs Reseller — rolled forward from Jun close by Jul channel movement (accurate):
-    //   D2D 6,608,079 +632,851 −294,383 = 6,946,547 · Res 1,579,315 +216,828 −18,468 = 1,777,675
-    d2dEnd: 6946547, resEnd: 1777675,
-    // Studio vs Vini — ESTIMATED: Jul product split not yet available. Jun book + Jul net movement
-    // (+536,828) apportioned by Jun's ratio (Studio 82.4% / Vini 17.6%); reconciles to endTotal.
-    // TODO(monthly): replace with the real Jul Studio/Vini month-end when the split is available.
-    endStudio: 7191768, endVini: 1532454
+    //   D2D 6,608,079 +650,048 −301,083 = 6,957,044 · Res 1,579,315 +216,828 −18,468 = 1,777,675
+    d2dEnd: 6957044, resEnd: 1777675,
+    // Studio vs Vini — still ESTIMATED (full Jul loss/reseller product split not yet supplied):
+    // Jun book + Jul net (+547,325) apportioned by Jun's ~82.4/17.6 ratio; reconciles to endTotal.
+    // TODO(monthly): replace with the real Jul Studio/Vini month-end when available.
+    endStudio: 7200401, endVini: 1534318
   };
 }
 
@@ -2482,10 +2482,11 @@ function renderSlack(rows) {
 
   const card = (label,val,accent,sub,subColor) => `<div style="flex:1;min-width:0;background:#fff;border:1px solid var(--border);border-left:4px solid ${accent};border-radius:10px;padding:11px 12px"><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)">${label}</div><div style="font-size:clamp(18px,5.5vw,24px);font-weight:800;color:var(--text);margin-top:3px;line-height:1.05">${val}</div>${sub?`<div style="font-size:12px;font-weight:700;margin-top:3px;color:${subColor||'var(--muted)'};white-space:nowrap">${sub}</div>`:''}</div>`;
 
-  const larrPct = pct(totalLARR, LARR_TARGET), nlPct = pct(liveTotal, NEW_LIVE_TARGET);
+  const larrTargetVal = CURR_BASE + NEW_LIVE_TARGET;   // month-end LARR target = base + new-live target ($1.5M)
+  const larrPct = pct(totalLARR, larrTargetVal), nlPct = pct(liveTotal, NEW_LIVE_TARGET);
   const row3 = (a,b,c) => `<div style="display:flex;gap:8px">${a}${b}${c}</div>`;
   const larrRow = row3(
-    card('Target', fmtC(LARR_TARGET), 'var(--muted)'),
+    card('Target', fmtC(larrTargetVal), 'var(--muted)'),
     card('Current', fmtC(totalLARR), 'var(--blue)'),
     card('Exp. Month-End', fmtC(meLARR), 'var(--green)')
   );
@@ -2605,9 +2606,18 @@ function renderDisplay(rows) {
   const avgTat = avg(rows.map(r=>r.liveTat).filter(x=>x>0));
 
   const kpi = (label,val,sub,accent,hl) => `<div class="disp-card${hl?' disp-hl':''}" style="flex:1;border-left-color:${accent}"><div class="disp-kpi-label">${label}</div><div class="disp-kpi-val">${val}</div>${sub?`<div style="font-size:clamp(9px,.8vw,12px);color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub}</div>`:''}</div>`;
+  // Total LARR banner: show the walk (frozen base → last month → this month) instead of a Studio/Vini split.
+  const lw = lastMonthWalk();
+  const lwM = lw.label.split(' ')[0];                                              // "Jul"
+  const curMon = new Date(CY, CM, 1).toLocaleDateString('en-US', { month: 'short' });  // "Aug"
+  const augAdd  = liveARR + PARTNERSHIP.exp;              // this-month New Addition (D2D live + partnership expansion)
+  const augLoss = REVENUE_LOSS + PARTNERSHIP.churn;       // this-month Revenue Loss (D2D churn + partnership churn)
+  const dim = t => `<span style="opacity:.6">(${t})</span>`;
+  const larrWalk = `${fmtC(lw.startTotal)} + ${fmtC(lw.addTotal)} ${dim(lwM + ' add')} − ${fmtC(lw.chTotal)} ${dim(lwM + ' loss')} + ${fmtC(augAdd)} ${dim(curMon + ' add')} − ${fmtC(augLoss)} ${dim(curMon + ' loss')} = <b style="color:var(--text)">${fmtC(totalLARR)}</b>`;
+  const larrBanner = `<div class="disp-card" style="flex:1;border-left-color:var(--blue)"><div class="disp-kpi-label">Total LARR</div><div class="disp-kpi-val">${fmtC(totalLARR)}</div><div style="font-size:clamp(10px,.95vw,13px);color:var(--muted);margin-top:4px;line-height:1.55">${larrWalk}</div></div>`;
   const topStrip = `
+    <div style="display:flex;gap:10px">${larrBanner}</div>
     <div style="display:flex;gap:10px">
-      ${kpi('Total LARR', fmtC(totalLARR), `S ${fmtC(larrStudio)} · V ${fmtC(larrVini)}`, 'var(--blue)')}
       ${kpi('Live This Month', fmtC(liveTotal), `<b style="color:var(--text)">D2D ${fmtC(liveARR)}</b> · <b style="color:var(--text)">Ptnr ${fmtC(PARTNERSHIP.exp)}</b>`, 'var(--green)', true)}
       ${kpi('Went Live Yesterday', fmtC(sum(wentYestRows)), uniq(wentYestRows)+' acct', 'var(--green)')}
       ${kpi('Sales to OB MTD', fmtC(sum(obMtdRows)), uniq(obMtdRows)+' acct', 'var(--blue)')}
@@ -2618,7 +2628,6 @@ function renderDisplay(rows) {
       ${kpi('Projected Month-End LARR', fmtC(meLARRConf), 'All projected '+fmtC(meLARR), 'var(--blue)')}
       ${kpi('ARR in Funnel', fmtC(funnelARR), uniq(funnelRows)+' ent', 'var(--blue)')}
       ${kpi('Blocked ARR', fmtC(blockedARR), `S ${fmtC(sum(blockedRows.filter(isStudio)))} · V ${fmtC(sum(blockedRows.filter(isVini)))}`, '#D97706')}
-      ${kpi('Avg OB Time (days)', (avgTat?avgTat.toFixed(1):'—'), `S ${stTat.toFixed(1)}d · V ${viTat.toFixed(1)}d`, 'var(--purple)')}
     </div>`;
 
   const byPoc = prod => {
@@ -2776,7 +2785,7 @@ function renderEmailView(rows) {
   const furtherARR  = furtherRows.reduce((s, r) => s + r.arr, 0);
   const furtherConf = furtherRows.filter(isConfirmed).reduce((s, r) => s + r.arr, 0);
   // July LARR target = frozen base + $1.8M live target. MONTHLY UPKEEP: roll the $1.8M each month.
-  const larrTarget = CURR_BASE + 1800000;
+  const larrTarget = CURR_BASE + NEW_LIVE_TARGET;   // base + new-live target ($1.5M this month)
   const larrGap    = meLARR - larrTarget;   // negative = short of target (shown red)
 
   // Only these four numbers (per request); everything else removed.
