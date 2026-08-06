@@ -792,7 +792,7 @@ function churnRowExcluded(r) {
   const custType = (r[7]  || '').trim().toLowerCase();
   const segment  = (r[2]  || '').trim().toLowerCase();
   if (custType === 'reseller' || segment === 'reseller') return true;   // counted via PARTNERSHIP
-  const status = (r[22] || '').trim().toLowerCase();
+  const status = (r[24] || '').trim().toLowerCase();   // Col Y "Leader Approved" (was Col W[22] before the sheet inserted Remark/Added-On columns)
   return status === 'attempting revival' || status === 'churn/contraction deferred' || status === 'churn/contraction prevented';
 }
 function computeRevenueLoss(churnRows) {
