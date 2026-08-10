@@ -2591,6 +2591,7 @@ function renderDisplay(rows) {
   const furtherRows = expRows.filter(r => !isToday(r.projectionDate));
   const blockedRows = rows.filter(isBlockedConf);
   const wentYestRows = rows.filter(r => isLive(r) && isYest(r.goLiveDate));
+  const wentTodayRows = rows.filter(r => isLive(r) && isToday(r.goLiveDate));   // actually went live today
   const obMtdRows = rows.filter(r => sameMonth(r.obCallDate, CM, CY));   // came into OB this month (OB Call Date)
   const liveARR=sum(liveRows), furtherARR=sum(furtherRows), todayARR=sum(todayRows), blockedARR=sum(blockedRows), funnelARR=sum(funnelRows);
   const liveTotal = liveARR + PARTNERSHIP.exp;   // incl. partnership expansion
@@ -2619,7 +2620,7 @@ function renderDisplay(rows) {
     <div style="display:flex;gap:10px">${larrBanner}</div>
     <div style="display:flex;gap:10px">
       ${kpi('Live This Month', fmtC(liveTotal), `<b style="color:var(--text)">D2D ${fmtC(liveARR)}</b> · <b style="color:var(--text)">Ptnr ${fmtC(PARTNERSHIP.exp)}</b>`, 'var(--green)', true)}
-      ${kpi('Went Live Yesterday', fmtC(sum(wentYestRows)), uniq(wentYestRows)+' acct', 'var(--green)')}
+      ${kpi('Went Live · Yest / Today', fmtC(sum(wentYestRows))+' / '+fmtC(sum(wentTodayRows)), uniq(wentYestRows)+' acct yest · '+uniq(wentTodayRows)+' today', 'var(--green)')}
       ${kpi('Sales to OB MTD', fmtC(sum(obMtdRows)), uniq(obMtdRows)+' acct', 'var(--blue)')}
       ${kpi('ARR Going Live Today', fmtC(todayARR), 'This wk '+fmtC(sum(weekRows)), '#16A34A')}
     </div>
