@@ -836,19 +836,20 @@ function lastMonthWalk() {
   return {
     label: "Jul '26", prevLabel: "Jun '26",
     startTotal: 8187394,                  // = Jun month-end LARR
-    // New Addition (Expansion). D2D 650,048 = 632,851 + 17,197 (Studio 161,672 = 144,475+17,197 · Vini 488,376). Reseller 18,069×12.
-    addD2D: 650048, addRes: 216828, addTotal: 866876,
-    // Revenue Loss. D2D/Others 301,083 = 294,383 + 6,700.
-    chD2D: 301083, chRes: 18468, chTotal: 319551,
-    // Month-End LARR (= new base for Aug) + splits.  8,187,394 + 866,876 − 319,551 = 8,734,719
-    endTotal: 8734719,
-    // D2D vs Reseller — rolled forward from Jun close by Jul channel movement (accurate):
-    //   D2D 6,608,079 +650,048 −301,083 = 6,957,044 · Res 1,579,315 +216,828 −18,468 = 1,777,675
-    d2dEnd: 6957044, resEnd: 1777675,
-    // Studio vs Vini — still ESTIMATED (full Jul loss/reseller product split not yet supplied):
-    // Jun book + Jul net (+547,325) apportioned by Jun's ~82.4/17.6 ratio; reconciles to endTotal.
-    // TODO(monthly): replace with the real Jul Studio/Vini month-end when available.
-    endStudio: 7200401, endVini: 1534318
+    // New Addition (Expansion) — full Studio/Vini × D2D/Partner split (user, 2026-08-10):
+    //   D2D 611,477 (Studio 172,001 · Vini 439,476) · Reseller 223,165 (Studio 219,565 · Vini 3,600)
+    addD2D: 611477, addRes: 223165, addTotal: 834642,
+    // Revenue Loss:
+    //   D2D 309,748 (Studio 182,040 · Vini 127,708) · Reseller 30,035 (Studio 30,035 · Vini 0)
+    chD2D: 309748, chRes: 30035, chTotal: 339783,
+    // Month-End LARR (= new base for Aug).  8,187,394 + 834,642 − 339,783 = 8,682,253
+    endTotal: 8682253,
+    // D2D vs Reseller — Jun close + Jul channel movement:
+    //   D2D 6,608,079 +611,477 −309,748 = 6,909,808 · Res 1,579,315 +223,165 −30,035 = 1,772,445
+    d2dEnd: 6909808, resEnd: 1772445,
+    // Studio vs Vini — now ACTUAL (full Jul product split supplied). Jun book + Jul net by product:
+    //   Studio 6,749,214 +(391,566−212,075)=6,928,705 · Vini 1,438,180 +(443,076−127,708)=1,753,548
+    endStudio: 6928705, endVini: 1753548
   };
 }
 
