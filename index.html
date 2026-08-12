@@ -588,6 +588,11 @@ const EMBEDDED_DATA = {
     <div class="section-title">Vini Accounts — In OB (by Projection Month)</div>
     <div id="vi-tree" style="max-height:66vh;overflow:auto"></div>
   </div>
+
+  <div class="section">
+    <div class="section-title">Vini — Issue View (In OB · Projection Month → Confirmation → Blocked Owner)</div>
+    <div id="vi-issues" style="max-height:66vh;overflow:auto"></div>
+  </div>
 </div>
 
 <!-- Programs Tab — Unblock OB → Live (Studio / Vini) -->
@@ -3738,6 +3743,72 @@ function renderAccountTree(containerId, rows, showAgent) {
   </table>`;
 }
 
+// ─── Issue-first view (Vini): In-OB rows rolled up Projection Month → Confirmation →
+// Blocked Owner → account, showing Issue · ARR stuck · # agents (= Vini line-item rows) ·
+// Account · Unblock ETA. Collapsible via the shared toggleTree (rows carry every ancestor
+// group's class, so collapsing a parent hides the whole subtree). "No blocker" sorts last
+// and starts collapsed. ───────────────────────────────────────────────────────────────────
+function renderViniIssues(containerId, rows) {
+  const el = document.getElementById(containerId); if (!el) return;
+  const inF = rows.filter(isInFunnel);
+  if (!inF.length) { el.innerHTML = '<div class="empty-state">No in-OB accounts</div>'; return; }
+  const mKey = r => r.projectionDate ? (r.projectionDate.getFullYear()+'-'+String(r.projectionDate.getMonth()+1).padStart(2,'0')) : 'none';
+  const mLabel = k => k==='none' ? 'No Projection Date' : (()=>{ const [y,m]=k.split('-'); return new Date(+y,+m-1,1).toLocaleString('en-US',{month:'long',year:'numeric'}); })();
+  const grp = (arr,fn) => { const m={}; arr.forEach(r=>{ const k=fn(r); (m[k]=m[k]||[]).push(r); }); return m; };
+  const sumArr = a => a.reduce((s,r)=>s+(r.arr||0),0);
+  const ents = a => new Set(a.map(r=>r.entityName||r.rooftopName||'—')).size;
+  const acctLbl = n => n===1 ? 'account' : 'accounts';
+  const confColor = { Confirmed:'#16A34A', Blocked:'#D97706', Unconfirmed:'#64748B' };
+  const confBg    = { Confirmed:'#F0FDF4', Blocked:'#FFF7ED', Unconfirmed:'#F8FAFC' };
+  const ownerColor = o => o==='No blocker' ? '#94A3B8' : /tech|integration/i.test(o) ? '#2563EB' : /client|sales/i.test(o) ? '#DC2626' : /product/i.test(o) ? '#7C3AED' : '#D97706';
+  const caret = (id,open) => `<span class="tree-caret" style="display:inline-block;width:14px;color:var(--muted)">${open?'▾':'▸'}</span>`;
+
+  let gid = 0;
+  const months = grp(inF, mKey);
+  const mKeys = Object.keys(months).sort((a,b)=> a==='none'?1 : b==='none'?-1 : a.localeCompare(b));
+  let out = '';
+  mKeys.forEach(mk => {
+    const mrows = months[mk], M = containerId+'-m'+(gid++);
+    out += `<tr onclick="toggleTree('${M}',this)" style="cursor:pointer"><td colspan="5" style="background:var(--bg);padding:9px 12px;font-weight:800;border-bottom:2px solid var(--border)">${caret(M,true)}${mLabel(mk)} <span style="color:var(--blue)">· ${fmt$(sumArr(mrows))}</span> <span style="color:var(--muted);font-weight:600;font-size:12px">· ${mrows.length} agents · ${ents(mrows)} ${acctLbl(ents(mrows))}</span></td></tr>`;
+    const confs = grp(mrows, confBucket);
+    ['Confirmed','Blocked','Unconfirmed'].filter(c=>confs[c]&&confs[c].length).forEach(c => {
+      const crows = confs[c], C = containerId+'-c'+(gid++);
+      out += `<tr class="${M}" onclick="toggleTree('${C}',this)" style="cursor:pointer"><td colspan="5" style="padding:6px 12px 6px 20px;font-weight:800;color:${confColor[c]};background:${confBg[c]};border-left:6px solid ${confColor[c]};border-bottom:1px solid var(--border)">${caret(C,true)}${c} <span style="font-weight:700">· ${fmt$(sumArr(crows))}</span> <span style="color:var(--muted);font-weight:500;font-size:12px">· ${crows.length} agents · ${ents(crows)} ${acctLbl(ents(crows))}</span></td></tr>`;
+      const owners = grp(crows, r => cleanTreeTxt(r.blockedReason) || 'No blocker');
+      const oKeys = Object.keys(owners).sort((a,b)=> a==='No blocker'?1 : b==='No blocker'?-1 : sumArr(owners[b])-sumArr(owners[a]));
+      oKeys.forEach(o => {
+        const orows = owners[o], O = containerId+'-o'+(gid++), collapsed = (o==='No blocker');
+        out += `<tr class="${M} ${C}" onclick="toggleTree('${O}',this)" style="cursor:pointer"><td colspan="5" style="padding:5px 12px 5px 40px;font-weight:700;font-size:12px;color:${ownerColor(o)};background:#FDF6EC;border-left:6px solid ${ownerColor(o)};border-bottom:1px dashed var(--border)">${caret(O,!collapsed)}${o==='No blocker'?'':'⛔ '}${o} <span style="color:var(--muted);font-weight:500">· ${fmt$(sumArr(orows))} · ${orows.length} agents · ${ents(orows)} ${acctLbl(ents(orows))}</span></td></tr>`;
+        const accs = grp(orows, r => r.entityName||r.rooftopName||'—');
+        Object.keys(accs).sort((a,b)=> sumArr(accs[b])-sumArr(accs[a])).forEach(a => {
+          const arows = accs[a];
+          const issue = [...new Set(arows.map(r=>cleanTreeTxt(r.blockedRemarks)).filter(Boolean))].join(' · ') || '—';
+          const eta   = [...new Set(arows.map(r=>cleanTreeTxt(r.unblockEta)).filter(Boolean))].join(', ') || '—';
+          out += `<tr class="${M} ${C} ${O}"${collapsed?' style="display:none;background:#fff"':' style="background:#fff"'}>
+            <td style="padding:6px 10px 6px 56px;border-bottom:1px solid var(--border);white-space:normal;color:var(--muted)">${issue}</td>
+            <td class="td-right" style="border-bottom:1px solid var(--border);font-weight:700">${fmt$(sumArr(arows))}</td>
+            <td class="td-right" style="border-bottom:1px solid var(--border)">${arows.length}</td>
+            <td style="border-bottom:1px solid var(--border);font-weight:600">${a}</td>
+            <td style="border-bottom:1px solid var(--border)">${eta}</td>
+          </tr>`;
+        });
+      });
+    });
+  });
+  const th = 'padding:7px 10px;font-size:10px;text-transform:uppercase;color:var(--muted);position:sticky;top:0;z-index:4;background:#F8FAFC';
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">
+    <colgroup><col style="width:38%"><col style="width:12%"><col style="width:9%"><col style="width:27%"><col style="width:14%"></colgroup>
+    <thead><tr>
+      <th style="text-align:left;${th}">Issue / Blocked Remark</th>
+      <th style="text-align:right;${th}">ARR Stuck</th>
+      <th style="text-align:right;${th}"># Agents</th>
+      <th style="text-align:left;${th}">Account</th>
+      <th style="text-align:left;${th}">Unblock ETA</th>
+    </tr></thead>
+    <tbody>${out}</tbody>
+  </table>`;
+}
+
 // ── Shared Studio/Vini tab widgets (pfx = 'st' | 'vi') ───────────────────────
 const tabChartState = { st: { filtered: [], goLiveSel: 0 }, vi: { filtered: [], goLiveSel: 0 } };
 
@@ -3999,6 +4070,7 @@ function renderVini(filtered) {
   renderGoLiveToggle('vi');
   renderGoLivePocBar('vi');
   renderAccountTree('vi-tree', filtered, true);
+  renderViniIssues('vi-issues', filtered);
 }
 
 let viTableData = [];
